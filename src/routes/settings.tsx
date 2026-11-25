@@ -15,8 +15,9 @@ import { InstallBanner } from '@/components/formlens/InstallBanner';
 import { useStorageEstimate } from '@/hooks/formlens/useStorageEstimate';
 import { useOcrWorker } from '@/hooks/formlens/useOcrWorker';
 import { runDiagnosticsBenchmark, type BenchPageResult } from '@/lib/formlens/benchmark';
+import { exportCorrectionsDataset } from '@/lib/formlens/corrections';
 import type { PipelineTimings } from '@/workers/pipeline/paddle-engine';
-import { getSetting, setSetting, db } from '@/db';
+import { getSetting, setSetting, getCorrectionCount, clearCorrections, db } from '@/db';
 import type { OcrEngine } from '@/db/schema';
 import {
   AlertDialog,
@@ -52,6 +53,9 @@ function SettingsPage() {
   const [benchResults, setBenchResults] = useState<BenchPageResult[] | null>(null);
   const [benchRunning, setBenchRunning] = useState(false);
   const [benchError, setBenchError] = useState<string | null>(null);
+  const [correctionCount, setCorrectionCount] = useState<number>(0);
+  const [exportingCorrections, setExportingCorrections] = useState(false);
+  const [clearingCorrections, setClearingCorrections] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -62,13 +66,15 @@ function SettingsPage() {
       getSetting<boolean>('setup_complete', false),
       getSetting<number>('det_max_side', 960),
       db.forms.orderBy('createdAt').reverse().first(),
-    ]).then(([eng, url, lang, ver, setup, maxSide, latestForm]) => {
+      getCorrectionCount(),
+    ]).then(([eng, url, lang, ver, setup, maxSide, latestForm, corrCount]) => {
       setOcrEngine(eng);
       setCloudUrl(url);
       setLanguage(lang);
       setPackVersion(ver);
       setSetupComplete(setup);
       setDetMaxSide(maxSide);
+      setCorrectionCount(corrCount);
       if (latestForm?.timingsJson) {
         try {
           setLastTimings(JSON.parse(latestForm.timingsJson) as PipelineTimings);
@@ -457,6 +463,59 @@ function SettingsPage() {
               ))}
             </div>
           )}
+        </div>
+
+        <Separator />
+
+        {/* Corrections Dataset */}
+        <div className="px-4 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+              <Download className="h-4 w-4" />
+              CORRECTIONS DATASET
+            </div>
+            <span className="text-xs font-medium text-muted-foreground">
+              {correctionCount} {correctionCount === 1 ? 'correction' : 'corrections'} stored
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Every field edit during review is saved locally with its crop image for offline dataset export (ZIP with PNG crops + labels.csv).
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={correctionCount === 0 || exportingCorrections}
+              onClick={async () => {
+                setExportingCorrections(true);
+                try {
+                  await exportCorrectionsDataset();
+                } finally {
+                  setExportingCorrections(false);
+                }
+              }}
+            >
+              {exportingCorrections ? 'Exporting ZIP…' : 'Export corrections dataset'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-red-600 hover:text-red-700"
+              disabled={correctionCount === 0 || clearingCorrections}
+              onClick={async () => {
+                setClearingCorrections(true);
+                try {
+                  await clearCorrections();
+                  setCorrectionCount(0);
+                } finally {
+                  setClearingCorrections(false);
+                }
+              }}
+            >
+              {clearingCorrections ? 'Clearing…' : 'Clear corrections'}
+            </Button>
+          </div>
         </div>
 
         <Separator />

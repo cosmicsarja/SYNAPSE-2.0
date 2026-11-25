@@ -66,6 +66,18 @@ export interface SyncQueueItem {
   lastError?: string;
 }
 
+export interface CorrectionRecord {
+  id?: number;
+  formId: number;
+  fieldName: string;
+  originalText: string;
+  correctedText: string;
+  confidence: number;
+  cropBlob?: Blob;
+  templateId: string;
+  timestamp: number;
+}
+
 // ─── Database class ───────────────────────────────────────────────────────────
 
 export class FormLensDB extends Dexie {
@@ -73,6 +85,7 @@ export class FormLensDB extends Dexie {
   formFields!: Table<FormField>;
   settings!: Table<AppSettings>;
   syncQueue!: Table<SyncQueueItem>;
+  corrections!: Table<CorrectionRecord>;
 
   constructor() {
     super('FormLensDB');
@@ -90,6 +103,15 @@ export class FormLensDB extends Dexie {
       formFields:'++id, formId, fieldId, category',
       settings:  'key',
       syncQueue: '++id, formId, createdAt',
+    });
+
+    // Non-destructive v3 migration for user correction dataset learning
+    this.version(3).stores({
+      forms:       '++id, templateId, status, createdAt, updatedAt, supabaseId, scanMode',
+      formFields:  '++id, formId, fieldId, category',
+      settings:    'key',
+      syncQueue:   '++id, formId, createdAt',
+      corrections: '++id, formId, fieldName, templateId, timestamp, [formId+fieldName]',
     });
   }
 }
@@ -153,5 +175,44 @@ export async function deleteForm(formId: number): Promise<void> {
     await db.syncQueue.where('formId').equals(formId).delete();
     await db.forms.delete(formId);
   });
+}
+
+export async function saveCorrection(entry: Omit<CorrectionRecord, 'id'>): Promise<void> {
+  const existing = await db.corrections
+    .where('[formId+fieldName]')
+    .equals([entry.formId, entry.fieldName])
+    .first();
+
+  if (entry.correctedText === entry.originalText) {
+    if (existing?.id !== undefined) {
+      await db.corrections.delete(existing.id);
+    }
+    return;
+  }
+
+  if (existing?.id !== undefined) {
+    await db.corrections.update(existing.id, {
+      originalText: entry.originalText,
+      correctedText: entry.correctedText,
+      confidence: entry.confidence,
+      cropBlob: entry.cropBlob ?? existing.cropBlob,
+      templateId: entry.templateId,
+      timestamp: entry.timestamp,
+    });
+  } else {
+    await db.corrections.add(entry);
+  }
+}
+
+export async function getCorrectionCount(): Promise<number> {
+  return db.corrections.count();
+}
+
+export async function getAllCorrections(): Promise<CorrectionRecord[]> {
+  return db.corrections.orderBy('timestamp').toArray();
+}
+
+export async function clearCorrections(): Promise<void> {
+  await db.corrections.clear();
 }
 

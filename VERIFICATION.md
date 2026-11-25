@@ -45,3 +45,11 @@
   - `npm run build`: exited `0`, generated `dist/client/sw.js` (57 precached files, 2.02 MB).
   - `npx vite preview --port 4175`: `/scan` and `/sw.js` returned HTTP 200; quality analysis runs 100% locally in JS/memory with zero network calls.
 - **Not verified in live browser here:** Interactive DevTools Offline camera/file upload UI click-through on `/scan` (no headless browser/Playwright installed in this environment).
+
+## 6. Feature 2: Learn from Corrections (Dexie + ZIP Dataset Export)
+- **Files added/updated:** `package.json`, `package-lock.json`, `src/db/schema.ts`, `src/db/index.ts`, `src/lib/formlens/corrections.ts`, `src/routes/review.$id.tsx`, `src/routes/settings.tsx`, `src/test/corrections.test.ts`
+- **Passed:**
+  - `npm test`: `src/test/corrections.test.ts` (1/1 passed: `buildCorrectionsDatasetZip` creates `crops/crop_0001.png` + `labels.csv` with Kannada/English text and CSV escaping, verified via `JSZip.loadAsync`). Total: 12/12 tests passed.
+  - `npm run build`: exited `0`, generated `dist/client/sw.js` (58 precached files, 2.12 MB).
+  - `npx vite preview --port 4176`: `/settings` and `/sw.js` returned HTTP 200; IndexedDB storage and JSZip export run 100% offline.
+- **Not verified in live browser here:** Interactive field edit on `/review/$id` + clicking "Export corrections dataset" / "Clear corrections" on `/settings` under DevTools Offline (no headless browser installed in this environment).

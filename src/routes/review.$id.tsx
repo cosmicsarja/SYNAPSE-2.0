@@ -11,10 +11,11 @@ import { OfflineStatusBar } from '@/components/formlens/OfflineStatusBar';
 import { ConfidenceBadge } from '@/components/formlens/ConfidenceBadge';
 import { CONFIDENCE_THRESHOLDS } from '@/config/ocrModels';
 import { useOcrWorker } from '@/hooks/formlens/useOcrWorker';
-import { getFormWithFields, updateFormField, markFormReviewed, db } from '@/db';
+import { getFormWithFields, updateFormField, markFormReviewed, saveCorrection, db } from '@/db';
 import type { SavedForm, FormField } from '@/db/schema';
 import type { FieldType } from '@/config/model';
 import { exportJson, exportCsv, exportPdf, exportAnnotatedPng } from '@/lib/formlens/exports';
+import { dataUrlToPngBlob } from '@/lib/formlens/corrections';
 import { enqueueSyncForm } from '@/lib/formlens/syncQueue';
 import { ChevronLeft, Download } from 'lucide-react';
 import {
@@ -82,11 +83,25 @@ function ReviewPage() {
   }, [formId]);
 
   const handleValueChange = useCallback(async (fieldId: number, value: string) => {
+    const targetField = fields.find((f) => f.id === fieldId);
     setFields((prev) => prev.map((f) => f.id === fieldId ? { ...f, textValue: value, wasEdited: true } : f));
     if (fieldId !== undefined) {
       await updateFormField(fieldId, value);
     }
-  }, []);
+    if (targetField) {
+      const cropBlob = await dataUrlToPngBlob(targetField.cropDataUrl);
+      await saveCorrection({
+        formId,
+        fieldName: targetField.fieldId || targetField.labelEn || `field_${fieldId}`,
+        originalText: targetField.originalText,
+        correctedText: value,
+        confidence: targetField.confidence,
+        ...(cropBlob ? { cropBlob } : {}),
+        templateId: form?.templateId ?? 'auto-extract',
+        timestamp: Date.now(),
+      });
+    }
+  }, [fields, form?.templateId, formId]);
 
   const handleAccept = useCallback((fieldId: number) => {
     setAccepted((prev) => new Set([...prev, fieldId]));
