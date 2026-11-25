@@ -7,7 +7,7 @@ import Dexie, { type Table } from 'dexie';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type FormStatus = 'draft' | 'reviewed' | 'synced';
-export type OcrEngine = 'mock' | 'onnx';
+export type OcrEngine = 'tesseract' | 'onnx' | 'mock';
 export type AppLanguage = 'en' | 'kn';
 
 export interface SavedForm {

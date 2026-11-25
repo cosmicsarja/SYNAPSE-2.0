@@ -1,22 +1,33 @@
 /**
- * React hook wrapping the OCR Web Worker.
+ * React hook wrapping OCR inference (off the main thread via Web Workers).
+ * Supports:
+ *   - 'tesseract': Tesseract.js WASM worker (/tesseract/worker.min.js + /tessdata/)
+ *   - 'onnx':      Custom CRNN ONNX model via ocr.worker.ts
+ *   - 'mock':      Simulated demo engine via ocr.worker.ts
  */
 import { useRef, useState, useCallback } from 'react';
 import type { OcrResult, FieldType } from '@/config/model';
+import type { OcrEngine } from '@/db/schema';
+import {
+  initTesseract,
+  recognizeWithTesseract,
+  recognizeFullPageWithTesseract,
+  type FullPageOcrResult,
+} from '@/workers/tesseract-engine';
 
 export interface OcrProgress {
   fieldIndex: number;
   totalFields: number;
 }
 
-type WorkerEngineType = 'mock' | 'onnx';
-
 interface UseOcrWorkerReturn {
   ready: boolean;
   error: string | null;
   progress: OcrProgress | null;
-  initialize: (engine: WorkerEngineType) => Promise<void>;
+  engineType: OcrEngine;
+  initialize: (engine: OcrEngine) => Promise<void>;
   recognize: (params: RecognizeParams) => Promise<OcrResult>;
+  recognizeFullPage: (imageData: ImageData) => Promise<FullPageOcrResult>;
 }
 
 interface RecognizeParams {
@@ -28,6 +39,8 @@ interface RecognizeParams {
 
 export function useOcrWorker(): UseOcrWorkerReturn {
   const workerRef = useRef<Worker | null>(null);
+  const engineRef = useRef<OcrEngine>('tesseract');
+  const [engineType, setEngineType] = useState<OcrEngine>('tesseract');
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<OcrProgress | null>(null);
@@ -46,7 +59,7 @@ export function useOcrWorker(): UseOcrWorkerReturn {
       case 'result': {
         const pending = pendingRef.current.get(msg.id);
         if (pending) {
-          pending.resolve({ text: msg.text, confidence: msg.confidence, script: msg.script });
+          pending.resolve({ text: msg.text, confidence: msg.confidence, script: msg.script as OcrResult['script'] });
           pendingRef.current.delete(msg.id);
         }
         break;
@@ -66,12 +79,29 @@ export function useOcrWorker(): UseOcrWorkerReturn {
     }
   }, []);
 
-  const initialize = useCallback(async (engine: WorkerEngineType) => {
-    if (workerRef.current) {
-      workerRef.current.terminate();
-    }
+  const initialize = useCallback(async (engine: OcrEngine) => {
+    engineRef.current = engine;
+    setEngineType(engine);
     setReady(false);
     setError(null);
+
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
+
+    if (engine === 'tesseract') {
+      try {
+        await initTesseract();
+        setReady(true);
+        setError(null);
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        throw err;
+      }
+    }
 
     const worker = new Worker(
       new URL('../../workers/ocr.worker.ts', import.meta.url),
@@ -93,7 +123,13 @@ export function useOcrWorker(): UseOcrWorkerReturn {
   }, [handleMessage]);
 
   const recognize = useCallback(
-    ({ imageData, fieldType, fieldIndex, totalFields }: RecognizeParams): Promise<OcrResult> => {
+    async ({ imageData, fieldType, fieldIndex, totalFields }: RecognizeParams): Promise<OcrResult> => {
+      setProgress({ fieldIndex, totalFields });
+
+      if (engineRef.current === 'tesseract') {
+        return recognizeWithTesseract(imageData, fieldType);
+      }
+
       if (!workerRef.current) return Promise.reject(new Error('Worker not initialized'));
       const id = `${Date.now()}-${Math.random()}`;
       return new Promise((resolve, reject) => {
@@ -104,13 +140,19 @@ export function useOcrWorker(): UseOcrWorkerReturn {
     [],
   );
 
-  return { ready, error, progress, initialize, recognize };
+  const recognizeFullPage = useCallback(
+    async (imageData: ImageData): Promise<FullPageOcrResult> => {
+      setProgress({ fieldIndex: 0, totalFields: 1 });
+      return recognizeFullPageWithTesseract(imageData);
+    },
+    [],
+  );
+
+  return { ready, error, progress, engineType, initialize, recognize, recognizeFullPage };
 }
 
-// Worker response types
 type WorkerResponse =
   | { type: 'init-done' }
   | { type: 'progress'; fieldIndex: number; totalFields: number }
   | { type: 'result'; id: string; text: string; confidence: number; script: string }
   | { type: 'error'; id?: string; message: string };
-

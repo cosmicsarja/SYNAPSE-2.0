@@ -1,24 +1,53 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "files": [
     {
-      "name": "ocr_crnn_int8.onnx",
-      "url": "/models/ocr_crnn_int8.onnx",
-      "size": 1,
-      "description": "OCR CRNN model (INT8 quantized) — placeholder until trained model is available"
+      "name": "eng.traineddata.gz",
+      "url": "/tessdata/eng.traineddata.gz",
+      "size": 2952873,
+      "description": "English OCR model (Tesseract LSTM)"
+    },
+    {
+      "name": "kan.traineddata.gz",
+      "url": "/tessdata/kan.traineddata.gz",
+      "size": 1914250,
+      "description": "Kannada OCR model (Tesseract LSTM)"
+    },
+    {
+      "name": "worker.min.js",
+      "url": "/tesseract/worker.min.js",
+      "size": 111307,
+      "description": "OCR Web Worker runtime"
+    },
+    {
+      "name": "tesseract-core-simd-lstm.wasm.js",
+      "url": "/tesseract/tesseract-core-simd-lstm.wasm.js",
+      "size": 3899472,
+      "description": "OCR SIMD WASM core"
+    },
+    {
+      "name": "tesseract-core-lstm.wasm.js",
+      "url": "/tesseract/tesseract-core-lstm.wasm.js",
+      "size": 3896484,
+      "description": "OCR fallback WASM core"
     },
     {
       "name": "charset.json",
       "url": "/models/charset.json",
-      "size": 512,
+      "size": 637,
       "description": "CTC character set for Kannada + English"
     },
     {
       "name": "karnataka_localities.json",
       "url": "/data/karnataka_localities.json",
-      "size": 10240,
-      "description": "Karnataka district/taluk/village locality dictionary"
+      "size": 2603,
+      "description": "Karnataka district/taluk/village dictionary"
+    },
+    {
+      "name": "ocr_crnn_int8.onnx",
+      "url": "/models/ocr_crnn_int8.onnx",
+      "size": 1,
+      "description": "Custom CRNN ONNX model slot (placeholder until custom model is provided)"
     }
   ]
 }
-

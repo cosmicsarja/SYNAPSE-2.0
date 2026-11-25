@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Download, CheckCircle, Circle, Wifi, WifiOff, AlertCircle } from 'lucide-react';
+import { InstallBanner } from '@/components/formlens/InstallBanner';
 import {
   downloadOfflinePack,
   verifyOfflinePack,
@@ -73,15 +74,11 @@ function SetupPage() {
     // App shell
     setStatus('app', 'ok');
 
-    // OCR model file in cache
-    const onnxFile = m.files.find((f) => f.name.endsWith('.onnx'));
-    if (onnxFile) {
-      const cache = await caches.open('formlens-offline-pack-v1');
-      const cached = await cache.match(onnxFile.url);
-      setStatus('ocr', cached ? 'ok' : 'error');
-    } else {
-      setStatus('ocr', 'ok'); // No real model yet — still mark ok (placeholder)
-    }
+    // OCR model files in cache (Tesseract traineddata + optional ONNX)
+    const cache = await caches.open('formlens-offline-pack-v1');
+    const engCached = await cache.match('/tessdata/eng.traineddata.gz');
+    const kanCached = await cache.match('/tessdata/kan.traineddata.gz');
+    setStatus('ocr', engCached && kanCached ? 'ok' : 'error');
 
     // Charset
     const charsetFile = m.files.find((f) => f.name === 'charset.json');
@@ -153,7 +150,7 @@ function SetupPage() {
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
               <p className="text-sm font-medium">What will be downloaded:</p>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li className="flex items-center gap-2"><Circle className="h-4 w-4 shrink-0" />OCR model (quantized, ~20 MB)</li>
+                <li className="flex items-center gap-2"><Circle className="h-4 w-4 shrink-0" />OCR models (~13 MB: English + Kannada)</li>
                 <li className="flex items-center gap-2"><Circle className="h-4 w-4 shrink-0" />Character sets (Kannada + English)</li>
                 <li className="flex items-center gap-2"><Circle className="h-4 w-4 shrink-0" />Karnataka locality dictionary</li>
                 <li className="flex items-center gap-2"><Circle className="h-4 w-4 shrink-0" />Form templates</li>
@@ -164,6 +161,8 @@ function SetupPage() {
               <Download className="mr-2 h-5 w-5" />
               Download Offline Pack
             </Button>
+
+            <InstallBanner variant="card" />
           </>
         )}
 

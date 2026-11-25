@@ -37,7 +37,10 @@ const SHELL_URLS = [
   '/forms',
   '/settings',
   '/setup',
+  '/install',
+  '/manifest.webmanifest',
   '/data/karnataka_localities.json',
+  '/templates/auto-extract.json',
   '/templates/ration-card.json',
   '/templates/income-certificate.json',
 ];

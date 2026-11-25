@@ -39,10 +39,13 @@ export default defineConfig({
           globDirectory: "dist/client",
           globPatterns: [
             "assets/**/*.{js,css}",
+            "index.html",
+            "manifest.webmanifest",
+            "icons/*.png",
           ],
           // Allow large .onnx and .wasm files (up to 100 MB)
           maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
-          navigateFallback: null, // SSR handles navigation; don't intercept
+          navigateFallback: '/index.html', // SPA — serve shell for all navigation when offline
           runtimeCaching: [
             {
               urlPattern: /\/models\/.*\.(onnx|json)$/,

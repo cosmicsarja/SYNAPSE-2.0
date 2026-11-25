@@ -1,0 +1,51 @@
+{
+  "id": "auto-extract",
+  "name": "Smart Form Reader (Any Layout)",
+  "nameKannada": "ಸ್ಮಾರ್ಟ್ ಫಾರ್ಮ್ ರೀಡರ್ (ಯಾವುದೇ ವಿನ್ಯಾಸ)",
+  "version": "1.0",
+  "mode": "smart",
+  "fields": [
+    {
+      "id": "applicant_name",
+      "labelEn": "Applicant / Full Name",
+      "labelKn": "ಅರ್ಜಿದಾರರ ಹೆಸರು",
+      "type": "name",
+      "bbox": { "x": 5, "y": 5, "w": 90, "h": 15 }
+    },
+    {
+      "id": "dob",
+      "labelEn": "Date / Date of Birth",
+      "labelKn": "ದಿನಾಂಕ / ಜನ್ಮ ದಿನಾಂಕ",
+      "type": "date",
+      "bbox": { "x": 5, "y": 20, "w": 90, "h": 15 }
+    },
+    {
+      "id": "phone",
+      "labelEn": "Mobile / Phone Number",
+      "labelKn": "ಮೊಬೈಲ್ ಸಂಖ್ಯೆ",
+      "type": "phone",
+      "bbox": { "x": 5, "y": 35, "w": 90, "h": 15 }
+    },
+    {
+      "id": "district",
+      "labelEn": "District / Place",
+      "labelKn": "ಜಿಲ್ಲೆ / ಸ್ಥಳ",
+      "type": "text",
+      "bbox": { "x": 5, "y": 50, "w": 90, "h": 15 }
+    },
+    {
+      "id": "pincode",
+      "labelEn": "Pincode",
+      "labelKn": "ಅಂಚೆ ಸಂಖ್ಯೆ",
+      "type": "number",
+      "bbox": { "x": 5, "y": 65, "w": 90, "h": 15 }
+    },
+    {
+      "id": "extracted_text",
+      "labelEn": "Full Extracted Text",
+      "labelKn": "ಪೂರ್ಣ ಪಠ್ಯ",
+      "type": "text",
+      "bbox": { "x": 0, "y": 0, "w": 100, "h": 100 }
+    }
+  ]
+}

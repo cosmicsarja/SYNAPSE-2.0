@@ -92,9 +92,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/icons/icon-192.png", type: "image/png" },
       { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/icons/icon-192.svg" },
+      { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -140,11 +140,18 @@ function RootComponent() {
   // Register service worker and listen for updates
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
-    // Don't register in Lovable preview iframes
-    if (window.parent !== window) return;
+    // Don't register inside Lovable preview iframes
+    try {
+      if (window.parent !== window && /lovable/i.test(document.referrer)) return;
+    } catch {
+      return;
+    }
 
-    navigator.serviceWorker.register("/sw.js").then((reg) => {
+    navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((reg) => {
       setRegistration(reg);
+      if (reg.waiting && navigator.serviceWorker.controller) {
+        setShowUpdateToast(true);
+      }
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         newWorker?.addEventListener("statechange", () => {
@@ -162,9 +169,19 @@ function RootComponent() {
   }, []);
 
   const handleUpdate = () => {
-    registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
     setShowUpdateToast(false);
-    window.location.reload();
+    if (registration?.waiting) {
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!reloaded) {
+          reloaded = true;
+          window.location.reload();
+        }
+      }, { once: true });
+      registration.waiting.postMessage({ type: "SKIP_WAITING" });
+    } else {
+      window.location.reload();
+    }
   };
 
   return (
