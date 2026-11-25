@@ -16,6 +16,9 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Disable Nitro/Cloudflare Worker output — build as a plain SPA for Vercel static hosting.
+  // Output goes to dist/ which Vercel serves directly with the rewrites in vercel.json.
+  nitro: false,
   vite: {
     plugins: [
       VitePWA({
@@ -30,10 +33,10 @@ export default defineConfig({
         // We use injectManifest strategy so the SW is a hand-authored file;
         // the glob patterns here are advisory — the runtime caching handles the rest.
         strategies: "generateSW",
-        outDir: ".output/public",
+        outDir: "dist/client",
         // Workbox config — precache app shell + big assets
         workbox: {
-          globDirectory: ".output/public",
+          globDirectory: "dist/client",
           globPatterns: [
             "assets/**/*.{js,css}",
           ],
