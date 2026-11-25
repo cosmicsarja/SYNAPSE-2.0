@@ -1,22 +1,14 @@
 /**
  * OCR Web Worker
- * All inference runs here, off the main thread.
- *
- * Message protocol:
- *   → { type: 'init', engine: 'mock' | 'onnx' }
- *   ← { type: 'init-done' } | { type: 'error', message }
- *
- *   → { type: 'recognize', id: string, imageData: ImageData, fieldType: string, fieldIndex: number, totalFields: number }
- *   ← { type: 'progress', fieldIndex: number, totalFields: number }
- *   ← { type: 'result', id: string, text: string, confidence: number, script: string }
- *   ← { type: 'error', id: string, message: string }
+ * All ONNX / PP-OCR inference runs here, off the main thread.
  */
-
 import { MockOcrEngine } from './mock-engine';
 import { OnnxOcrEngine } from './onnx-engine';
+import { PaddleOcrEngine } from './pipeline/paddle-engine';
 import type { OcrEngine, FieldType } from '@/config/model';
 
 let engine: OcrEngine | null = null;
+let paddleEngine: PaddleOcrEngine | null = null;
 
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   const msg = event.data;
@@ -24,7 +16,14 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   switch (msg.type) {
     case 'init': {
       try {
-        engine = msg.engine === 'onnx' ? new OnnxOcrEngine() : new MockOcrEngine();
+        if (msg.engine === 'paddle') {
+          if (!paddleEngine) paddleEngine = new PaddleOcrEngine();
+          engine = paddleEngine;
+        } else if (msg.engine === 'onnx') {
+          engine = new OnnxOcrEngine();
+        } else {
+          engine = new MockOcrEngine();
+        }
         await engine.init();
         self.postMessage({ type: 'init-done' });
       } catch (err) {
@@ -47,12 +46,30 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       }
       break;
     }
+
+    case 'detect-and-recognize': {
+      try {
+        if (!paddleEngine) {
+          paddleEngine = new PaddleOcrEngine();
+          await paddleEngine.init();
+        }
+        const out = await paddleEngine.detectAndRecognizePage(msg.imageData, {
+          maxSideLen: msg.maxSideLen,
+          langMode: msg.langMode,
+          onProgress: (stage, done, total) => {
+            self.postMessage({ type: 'pipeline-progress', id: msg.id, stage, done, total });
+          },
+        });
+        self.postMessage({ type: 'pipeline-result', id: msg.id, ...out });
+      } catch (err) {
+        self.postMessage({ type: 'error', id: msg.id, message: err instanceof Error ? err.message : String(err) });
+      }
+      break;
+    }
   }
 };
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 type WorkerMessage =
-  | { type: 'init'; engine: 'mock' | 'onnx' }
-  | { type: 'recognize'; id: string; imageData: ImageData; fieldType: string; fieldIndex: number; totalFields: number };
-
+  | { type: 'init'; engine: 'mock' | 'onnx' | 'paddle' }
+  | { type: 'recognize'; id: string; imageData: ImageData; fieldType: string; fieldIndex: number; totalFields: number }
+  | { type: 'detect-and-recognize'; id: string; imageData: ImageData; maxSideLen?: number; langMode?: 'eng+kan' | 'eng' | 'kan' };
