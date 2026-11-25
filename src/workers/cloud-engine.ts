@@ -4,7 +4,13 @@
  * to local offline Tesseract OCR.
  */
 import { getSetting } from '@/db';
-import type { FullPageOcrResult, OcrLangMode, OcrLine } from '@/workers/tesseract-engine';
+import {
+  classifyBlockLanguage,
+  type BlockLanguage,
+  type FullPageOcrResult,
+  type OcrLangMode,
+  type OcrLine,
+} from '@/workers/tesseract-engine';
 
 export interface CloudOcrResponse {
   usedCloud: boolean;
@@ -45,18 +51,25 @@ function normalizeResponse(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((l: any) => typeof l?.text === 'string' && l.text.trim())
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((l: any) => ({
-        text: String(l.text).trim(),
-        confidence: typeof l.confidence === 'number'
-          ? (l.confidence > 1 ? l.confidence / 100 : l.confidence)
-          : 0.9,
-        bbox: {
-          x0: Number(l.bbox?.x0 ?? 0),
-          y0: Number(l.bbox?.y0 ?? 0),
-          x1: Number(l.bbox?.x1 ?? imgW),
-          y1: Number(l.bbox?.y1 ?? Math.min(imgH, 60)),
-        },
-      }));
+      .map((l: any) => {
+        const text = String(l.text).trim();
+        const lang = (['kn', 'en', 'mixed', 'number'].includes(l.language)
+          ? l.language
+          : classifyBlockLanguage(text)) as BlockLanguage;
+        return {
+          text,
+          language: lang,
+          confidence: typeof l.confidence === 'number'
+            ? (l.confidence > 1 ? l.confidence / 100 : l.confidence)
+            : 0.9,
+          bbox: {
+            x0: Number(l.bbox?.x0 ?? 0),
+            y0: Number(l.bbox?.y0 ?? 0),
+            x1: Number(l.bbox?.x1 ?? imgW),
+            y1: Number(l.bbox?.y1 ?? Math.min(imgH, 60)),
+          },
+        };
+      });
     const fullText = typeof data.fullText === 'string'
       ? data.fullText.trim()
       : lines.map((l) => l.text).join('\n');

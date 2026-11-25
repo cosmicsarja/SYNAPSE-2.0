@@ -6,11 +6,24 @@
 import type { FieldType, OcrResult, OcrScript } from '@/config/model';
 
 export type OcrLangMode = 'eng+kan' | 'eng' | 'kan';
+export type BlockLanguage = 'kn' | 'en' | 'mixed' | 'number';
 
 export interface OcrLine {
   text: string;
   confidence: number; // 0–1
+  language?: BlockLanguage;
   bbox: { x0: number; y0: number; x1: number; y1: number };
+}
+
+export function classifyBlockLanguage(text: string): BlockLanguage {
+  const hasKannada = /[\u0C80-\u0CFF]/.test(text);
+  const hasLatin = /[a-zA-Z]/.test(text);
+  const hasDigit = /\d/.test(text);
+  if (hasKannada && hasLatin) return 'mixed';
+  if (hasKannada) return 'kn';
+  if (hasLatin) return 'en';
+  if (hasDigit) return 'number';
+  return 'en';
 }
 
 export interface FullPageOcrResult {
@@ -251,6 +264,7 @@ export async function recognizeFullPageWithTesseract(
           lines.push({
             text: t,
             confidence: Math.max(0, Math.min(1, (line.confidence ?? 0) / 100)),
+            language: classifyBlockLanguage(t),
             bbox: {
               x0: Math.max(0, Math.round((line.bbox.x0 - pad) / scale)),
               y0: Math.max(0, Math.round((line.bbox.y0 - pad) / scale)),

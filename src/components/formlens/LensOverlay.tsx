@@ -6,8 +6,35 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ConfidenceBadge } from '@/components/formlens/ConfidenceBadge';
-import type { OcrLine } from '@/workers/tesseract-engine';
 import { Copy, Check, Save, RotateCcw, Sparkles } from 'lucide-react';
+import { classifyBlockLanguage, type BlockLanguage, type OcrLine } from '@/workers/tesseract-engine';
+
+const LANG_STYLE: Record<BlockLanguage, { label: string; idle: string; selected: string; badge: string }> = {
+  en: {
+    label: 'EN',
+    idle: 'bg-blue-400/15 border border-blue-400/80 hover:bg-blue-400/30',
+    selected: 'bg-blue-500/40 border-2 border-blue-400 ring-2 ring-blue-300/60',
+    badge: 'bg-blue-600 text-white',
+  },
+  kn: {
+    label: 'ಕನ್ನಡ',
+    idle: 'bg-amber-400/15 border border-amber-400/80 hover:bg-amber-400/30',
+    selected: 'bg-amber-500/40 border-2 border-amber-400 ring-2 ring-amber-300/60',
+    badge: 'bg-amber-600 text-white',
+  },
+  mixed: {
+    label: 'MIX',
+    idle: 'bg-purple-400/15 border border-purple-400/80 hover:bg-purple-400/30',
+    selected: 'bg-purple-500/40 border-2 border-purple-400 ring-2 ring-purple-300/60',
+    badge: 'bg-purple-600 text-white',
+  },
+  number: {
+    label: '123',
+    idle: 'bg-emerald-400/15 border border-emerald-400/80 hover:bg-emerald-400/30',
+    selected: 'bg-emerald-500/40 border-2 border-emerald-400 ring-2 ring-emerald-300/60',
+    badge: 'bg-emerald-600 text-white',
+  },
+};
 
 interface Props {
   imageDataUrl: string;
@@ -34,6 +61,20 @@ export function LensOverlay({
   const [imgBox, setImgBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [langFilter, setLangFilter] = useState<'all' | BlockLanguage>('all');
+
+  const lineLangs = useMemo(
+    () => lines.map((l) => l.language ?? classifyBlockLanguage(l.text)),
+    [lines],
+  );
+
+  const visibleIndices = useMemo(
+    () =>
+      lines
+        .map((_, idx) => idx)
+        .filter((idx) => langFilter === 'all' || lineLangs[idx] === langFilter),
+    [lines, lineLangs, langFilter],
+  );
 
   const updateImageBounds = useCallback(() => {
     const container = containerRef.current;
@@ -92,8 +133,14 @@ export function LensOverlay({
         .filter(Boolean)
         .join('\n');
     }
+    if (langFilter !== 'all') {
+      return visibleIndices
+        .map((i) => lines[i]?.text ?? '')
+        .filter(Boolean)
+        .join('\n');
+    }
     return fullText;
-  }, [selectedIndices, lines, fullText]);
+  }, [selectedIndices, lines, fullText, langFilter, visibleIndices]);
 
   // Quick-extract numbers, phones, dates found anywhere in the image
   const detectedEntities = useMemo(() => {
@@ -194,7 +241,10 @@ export function LensOverlay({
               height: imgBox.height,
             }}
           >
-            {lines.map((line, i) => {
+            {visibleIndices.map((i) => {
+              const line = lines[i]!;
+              const lang = lineLangs[i] ?? 'en';
+              const style = LANG_STYLE[lang];
               const xPct = (line.bbox.x0 / imageWidth) * 100;
               const yPct = (line.bbox.y0 / imageHeight) * 100;
               const wPct = ((line.bbox.x1 - line.bbox.x0) / imageWidth) * 100;
@@ -209,11 +259,9 @@ export function LensOverlay({
                     e.stopPropagation();
                     toggleSelect(i);
                   }}
-                  title={line.text}
-                  className={`absolute rounded-sm transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-blue-500/40 border-2 border-blue-400 ring-2 ring-blue-300/60'
-                      : 'bg-white/20 border border-blue-300/80 hover:bg-blue-400/30'
+                  title={`[${style.label}] ${line.text}`}
+                  className={`group absolute rounded-sm transition-all cursor-pointer ${
+                    isSelected ? style.selected : style.idle
                   }`}
                   style={{
                     left: `${xPct}%`,
@@ -221,7 +269,15 @@ export function LensOverlay({
                     width: `${Math.max(wPct, 1)}%`,
                     height: `${Math.max(hPct, 1.5)}%`,
                   }}
-                />
+                >
+                  <span
+                    className={`pointer-events-none absolute -top-4 left-0 rounded px-1 text-[9px] font-bold leading-tight ${style.badge} ${
+                      isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
+                  >
+                    {style.label}
+                  </span>
+                </button>
               );
             })}
           </div>
@@ -238,6 +294,36 @@ export function LensOverlay({
           </div>
           {lines.length > 0 && <ConfidenceBadge confidence={avgConfidence} />}
         </div>
+
+        {/* Language filter pills (auto-detected per block) */}
+        {lines.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: 'all', label: `All (${lines.length})` },
+                { id: 'en', label: `English (${lineLangs.filter((l) => l === 'en').length})` },
+                { id: 'kn', label: `ಕನ್ನಡ (${lineLangs.filter((l) => l === 'kn').length})` },
+                { id: 'mixed', label: `Mixed (${lineLangs.filter((l) => l === 'mixed').length})` },
+                { id: 'number', label: `Numbers (${lineLangs.filter((l) => l === 'number').length})` },
+              ] as const
+            )
+              .filter((p) => p.id === 'all' || !p.label.endsWith('(0)'))
+              .map((pill) => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setLangFilter(pill.id)}
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-colors ${
+                    langFilter === pill.id
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+          </div>
+        )}
 
         {/* Detected quick-copy chips for phones / dates / numbers */}
         {detectedEntities.length > 0 && (
