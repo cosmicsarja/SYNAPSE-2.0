@@ -217,17 +217,45 @@ function SettingsPage() {
             <Cpu className="h-4 w-4" />
             OCR ENGINE
           </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm">Use ONNX (On-device AI)</Label>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {ocrEngine === 'onnx' ? 'Real OCR model — requires model file' : 'Mock mode — returns demo data'}
-              </div>
-            </div>
-            <Switch
-              checked={ocrEngine === 'onnx'}
-              onCheckedChange={handleEngineToggle}
-            />
+          <div className="grid gap-2">
+            {(
+              [
+                {
+                  id: 'tesseract' as const,
+                  title: 'On-device OCR (English + Kannada)',
+                  desc: 'Reads real text & numbers offline using local WASM OCR',
+                },
+                {
+                  id: 'onnx' as const,
+                  title: 'Custom ONNX Model',
+                  desc: 'Uses /models/ocr_crnn_int8.onnx (requires trained model)',
+                },
+                {
+                  id: 'mock' as const,
+                  title: 'Demo / Mock Mode',
+                  desc: 'Returns sample text without reading the image',
+                },
+              ]
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => void handleEngineSelect(opt.id)}
+                className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                  ocrEngine === opt.id
+                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                    : 'border-border hover:bg-muted/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{opt.title}</span>
+                  {ocrEngine === opt.id && (
+                    <span className="text-xs font-semibold text-primary">Active</span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">{opt.desc}</div>
+              </button>
+            ))}
           </div>
           {ocrEngine === 'onnx' && (
             <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 flex gap-2">

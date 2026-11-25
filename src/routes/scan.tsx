@@ -1,5 +1,5 @@
 /**
- * Scan route — camera capture, crop, template selection, and OCR dispatch.
+ * Scan route — Google Lens-style camera/image capture, crop, and on-device text highlighting.
  */
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, useCallback } from 'react';
@@ -7,184 +7,200 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { CameraCapture } from '@/components/formlens/CameraCapture';
 import { ManualCrop } from '@/components/formlens/ManualCrop';
-import { TemplatePicker, type FormTemplate } from '@/components/formlens/TemplatePicker';
+import { LensOverlay } from '@/components/formlens/LensOverlay';
 import { BottomNav } from '@/components/formlens/BottomNav';
 import { OfflineStatusBar } from '@/components/formlens/OfflineStatusBar';
 import { useOcrWorker } from '@/hooks/formlens/useOcrWorker';
 import { getSetting, saveFormWithFields } from '@/db';
-import type { FormField } from '@/db/schema';
-import type { FieldType } from '@/config/model';
-import { ChevronLeft } from 'lucide-react';
+import type { FormField, OcrEngine } from '@/db/schema';
+import type { OcrLine } from '@/workers/tesseract-engine';
 
 export const Route = createFileRoute('/scan')({
   head: () => ({ meta: [{ title: 'Scan – FormLens' }] }),
   component: ScanPage,
 });
 
-type ScanStep = 'template' | 'camera' | 'crop' | 'processing' | 'done';
+type ScanStep = 'camera' | 'crop' | 'processing' | 'lens';
+
+function inferFieldType(text: string): string {
+  const digits = text.replace(/[\s\-()]/g, '');
+  if (/(?:\+91)?[6-9]\d{9}/.test(digits)) return 'phone';
+  if (/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/.test(text)) return 'date';
+  if (/^\d[\d,.\s]*$/.test(text.trim())) return 'number';
+  return 'text';
+}
+
+function cropLineUrl(srcCanvas: HTMLCanvasElement, line: OcrLine): string {
+  const x = Math.max(0, line.bbox.x0 - 4);
+  const y = Math.max(0, line.bbox.y0 - 4);
+  const w = Math.max(1, Math.min(srcCanvas.width - x, line.bbox.x1 - line.bbox.x0 + 8));
+  const h = Math.max(1, Math.min(srcCanvas.height - y, line.bbox.y1 - line.bbox.y0 + 8));
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  out.getContext('2d')!.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
+  return out.toDataURL('image/jpeg', 0.75);
+}
 
 function ScanPage() {
   const navigate = useNavigate();
-  const { initialize, recognize, progress, ready } = useOcrWorker();
+  const { initialize, recognize, recognizeFullPage } = useOcrWorker();
 
-  const [step, setStep] = useState<ScanStep>('template');
-  const [template, setTemplate] = useState<FormTemplate | null>(null);
+  const [step, setStep] = useState<ScanStep>('camera');
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [capturedImageData, setCapturedImageData] = useState<ImageData | null>(null);
+
+  const [lensImageUrl, setLensImageUrl] = useState<string | null>(null);
+  const [lensImageData, setLensImageData] = useState<ImageData | null>(null);
+  const [lines, setLines] = useState<OcrLine[]>([]);
+  const [fullText, setFullText] = useState('');
+  const [statusMsg, setStatusMsg] = useState('Initializing on-device OCR…');
   const [ocrError, setOcrError] = useState<string | null>(null);
-
-  const handleTemplateSelect = (tpl: FormTemplate) => {
-    setTemplate(tpl);
-  };
-
-  const handleStartCamera = async () => {
-    if (!template) return;
-    // Initialize OCR worker with current engine setting
-    const engine = await getSetting<'mock' | 'onnx'>('ocr_engine', 'mock');
-    try {
-      await initialize(engine);
-    } catch (err) {
-      setOcrError(err instanceof Error ? err.message : 'Failed to initialize OCR engine');
-    }
-    setStep('camera');
-  };
+  const [saving, setSaving] = useState(false);
 
   const handleCapture = useCallback((imageData: ImageData, dataUrl: string) => {
     setCapturedImageData(imageData);
     setCapturedDataUrl(dataUrl);
+    setOcrError(null);
     setStep('crop');
   }, []);
 
-  const handleCrop = useCallback(async (croppedData: ImageData, croppedUrl: string) => {
-    if (!template || !ready) return;
+  const runLensOcr = useCallback(async (croppedData: ImageData, croppedUrl: string) => {
     setStep('processing');
     setOcrError(null);
+    setLensImageData(croppedData);
+    setLensImageUrl(croppedUrl);
 
     try {
-      const fields: Omit<FormField, 'id' | 'formId'>[] = [];
-      let totalConfidence = 0;
+      const engine = await getSetting<OcrEngine>('ocr_engine', 'tesseract');
+      setStatusMsg(engine === 'tesseract' ? 'Loading offline English + Kannada OCR…' : `Starting ${engine} OCR…`);
+      await initialize(engine);
 
-      for (let i = 0; i < template.fields.length; i++) {
-        const field = template.fields[i];
-        if (!field) continue;
+      setStatusMsg('Reading text and numbers from image…');
 
-        // Crop to field bbox (percent of full image)
-        const { x, y, w, h } = field.bbox;
-        const fx = Math.round((x / 100) * croppedData.width);
-        const fy = Math.round((y / 100) * croppedData.height);
-        const fw = Math.round((w / 100) * croppedData.width);
-        const fh = Math.round((h / 100) * croppedData.height);
-
-        const fieldCanvas = document.createElement('canvas');
-        fieldCanvas.width = Math.max(fw, 1);
-        fieldCanvas.height = Math.max(fh, 1);
-        const fctx = fieldCanvas.getContext('2d')!;
-        // Draw from the full cropped canvas
-        const srcCanvas = document.createElement('canvas');
-        srcCanvas.width = croppedData.width;
-        srcCanvas.height = croppedData.height;
-        srcCanvas.getContext('2d')!.putImageData(croppedData, 0, 0);
-        fctx.drawImage(srcCanvas, fx, fy, fw, fh, 0, 0, fw, fh);
-        const fieldImageData = fctx.getImageData(0, 0, Math.max(fw, 1), Math.max(fh, 1));
-        const fieldCropUrl = fieldCanvas.toDataURL('image/jpeg', 0.7);
-
-        const result = await recognize({
-          imageData: fieldImageData,
-          fieldType: field.type as FieldType,
-          fieldIndex: i,
-          totalFields: template.fields.length,
+      if (engine === 'tesseract') {
+        const res = await recognizeFullPage(croppedData);
+        setLines(res.lines);
+        setFullText(res.fullText);
+      } else {
+        // Fallback for ONNX / Mock engines: run single-block recognize
+        const res = await recognize({
+          imageData: croppedData,
+          fieldType: 'text',
+          fieldIndex: 0,
+          totalFields: 1,
         });
-
-        totalConfidence += result.confidence;
-        fields.push({
-          fieldId: field.id,
-          labelEn: field.labelEn,
-          labelKn: field.labelKn,
-          fieldType: field.type,
-          textValue: result.text,
-          originalText: result.text,
-          confidence: result.confidence,
-          wasEdited: false,
-          cropDataUrl: fieldCropUrl,
-        });
+        setLines(
+          res.text
+            ? [{ text: res.text, confidence: res.confidence, bbox: { x0: 10, y0: 10, x1: croppedData.width - 10, y1: Math.min(croppedData.height - 10, 80) } }]
+            : [],
+        );
+        setFullText(res.text);
       }
 
-      const avgConfidence = fields.length > 0 ? totalConfidence / fields.length : 0;
+      setStep('lens');
+    } catch (err) {
+      setOcrError(err instanceof Error ? err.message : 'OCR failed');
+      setStep('crop');
+    }
+  }, [initialize, recognize, recognizeFullPage]);
+
+  const handleSkipCrop = useCallback(() => {
+    if (!capturedImageData || !capturedDataUrl) return;
+    void runLensOcr(capturedImageData, capturedDataUrl);
+  }, [capturedImageData, capturedDataUrl, runLensOcr]);
+
+  const handleSaveAndReview = async () => {
+    if (!lensImageData || !lensImageUrl) return;
+    setSaving(true);
+    try {
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = lensImageData.width;
+      srcCanvas.height = lensImageData.height;
+      srcCanvas.getContext('2d')!.putImageData(lensImageData, 0, 0);
+
+      const fields: Omit<FormField, 'id' | 'formId'>[] = lines.map((line, i) => ({
+        fieldId: `line_${i + 1}`,
+        labelEn: `Detected Line ${i + 1}`,
+        labelKn: `ಪತ್ತೆಯಾದ ಸಾಲು ${i + 1}`,
+        fieldType: inferFieldType(line.text),
+        textValue: line.text,
+        originalText: line.text,
+        confidence: line.confidence,
+        wasEdited: false,
+        cropDataUrl: cropLineUrl(srcCanvas, line),
+      }));
+
+      const avgConfidence =
+        fields.length > 0
+          ? fields.reduce((s, f) => s + f.confidence, 0) / fields.length
+          : 0;
 
       const formId = await saveFormWithFields(
         {
-          templateId: template.id,
-          templateName: template.name,
+          templateId: 'lens-scan',
+          templateName: 'Lens Text Scan',
           status: 'draft',
           avgConfidence,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          thumbnailDataUrl: croppedUrl,
+          thumbnailDataUrl: lensImageUrl,
         },
         fields,
       );
 
-      setStep('done');
       void navigate({ to: '/review/$id', params: { id: String(formId) } });
-    } catch (err) {
-      setOcrError(err instanceof Error ? err.message : 'OCR failed');
-      setStep('crop'); // Go back to crop step
+    } finally {
+      setSaving(false);
     }
-  }, [template, ready, recognize, navigate]);
+  };
+
+  const resetToCamera = () => {
+    setCapturedDataUrl(null);
+    setCapturedImageData(null);
+    setLensImageUrl(null);
+    setLensImageData(null);
+    setLines([]);
+    setFullText('');
+    setOcrError(null);
+    setStep('camera');
+  };
 
   return (
     <div className="flex h-screen flex-col bg-background">
       <OfflineStatusBar />
 
-      {/* Template selection step */}
-      {step === 'template' && (
-        <>
-          <div className="flex items-center gap-3 border-b px-4 py-3">
-            <h1 className="font-semibold text-lg flex-1">Scan Form</h1>
-          </div>
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-24">
-            <div>
-              <h2 className="text-sm font-semibold text-muted-foreground mb-3">SELECT TEMPLATE</h2>
-              <TemplatePicker
-                selected={template?.id}
-                onSelect={handleTemplateSelect}
-              />
-            </div>
-            {template && (
-              <Button onClick={handleStartCamera} className="w-full h-12 text-base" size="lg">
-                Continue with "{template.name}" →
-              </Button>
-            )}
-          </div>
-          <BottomNav />
-        </>
-      )}
-
-      {/* Camera step */}
-      {step === 'camera' && capturedDataUrl === null && (
-        <div className="flex-1 relative">
-          <button
-            onClick={() => setStep('template')}
-            className="absolute top-3 left-3 z-10 rounded-full bg-black/50 p-1.5 text-white"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
+      {/* Step 1: Camera / Upload */}
+      {step === 'camera' && (
+        <div className="flex-1 relative min-h-0 pb-16">
           <CameraCapture
             onCapture={handleCapture}
-            onCancel={() => setStep('template')}
+            onCancel={resetToCamera}
           />
+          <BottomNav />
         </div>
       )}
 
-      {/* Crop step */}
+      {/* Step 2: 4-corner perspective crop (with Skip Crop option) */}
       {step === 'crop' && capturedDataUrl && capturedImageData && (
-        <div className="flex-1 relative">
-          <ManualCrop
-            imageDataUrl={capturedDataUrl}
-            imageData={capturedImageData}
-            onCrop={(cropped, url) => void handleCrop(cropped, url)}
-            onCancel={() => setStep('camera')}
-          />
+        <div className="flex-1 relative flex flex-col min-h-0">
+          <div className="bg-black px-4 pt-2 flex justify-end">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleSkipCrop}
+            >
+              Scan Full Image →
+            </Button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <ManualCrop
+              imageDataUrl={capturedDataUrl}
+              imageData={capturedImageData}
+              onCrop={(cropped, url) => void runLensOcr(cropped, url)}
+              onCancel={resetToCamera}
+            />
+          </div>
           {ocrError && (
             <div className="absolute bottom-20 left-4 right-4 rounded-lg bg-red-100 border border-red-300 p-3 text-sm text-red-700">
               {ocrError}
@@ -193,24 +209,30 @@ function ScanPage() {
         </div>
       )}
 
-      {/* Processing / OCR progress */}
-      {step === 'processing' && template && (
+      {/* Step 3: Processing */}
+      {step === 'processing' && (
         <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
           <div className="text-center space-y-2">
-            <div className="text-lg font-semibold">Reading form…</div>
-            {progress && (
-              <div className="text-sm text-muted-foreground">
-                Reading field {progress.fieldIndex + 1} of {progress.totalFields}
-              </div>
-            )}
+            <div className="text-lg font-semibold">Scanning image…</div>
+            <div className="text-sm text-muted-foreground">{statusMsg}</div>
           </div>
-          <Progress
-            value={progress ? ((progress.fieldIndex + 1) / progress.totalFields) * 100 : 0}
-            className="w-full max-w-xs h-2"
-          />
+          <Progress value={60} className="w-full max-w-xs h-2 animate-pulse" />
         </div>
+      )}
+
+      {/* Step 4: Google Lens-style highlight overlay */}
+      {step === 'lens' && lensImageUrl && lensImageData && (
+        <LensOverlay
+          imageDataUrl={lensImageUrl}
+          imageWidth={lensImageData.width}
+          imageHeight={lensImageData.height}
+          lines={lines}
+          fullText={fullText}
+          onSaveAndReview={() => void handleSaveAndReview()}
+          onRetake={resetToCamera}
+          saving={saving}
+        />
       )}
     </div>
   );
 }
-
