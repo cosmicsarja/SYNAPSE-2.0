@@ -445,15 +445,27 @@ export function sortBoxesReadingOrder<T extends { bbox: BBox }>(boxes: T[]): T[]
 /**
  * Crops an oriented quadrilateral from the full-resolution ImageData using
  * perspective/bilinear mapping; rotates 90° CCW if crop is much taller than wide.
+ * Expands the quad slightly (~8% vertical, ~3% horizontal) so Kannada top vowel
+ * signs and bottom ottaksharas are not clipped at tight detection boundaries.
  */
 export function cropBoxFromImageData(
   source: ImageData,
   quad: Quad,
 ): { crop: ImageData; rotated90: boolean } {
-  const topW = Math.hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1]);
-  const botW = Math.hypot(quad[2][0] - quad[3][0], quad[2][1] - quad[3][1]);
-  const leftH = Math.hypot(quad[3][0] - quad[0][0], quad[3][1] - quad[0][1]);
-  const rightH = Math.hypot(quad[2][0] - quad[1][0], quad[2][1] - quad[1][1]);
+  const cx = (quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4;
+  const cy = (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4;
+  const paddedQuad: Quad = quad.map(([qx, qy]) => {
+    const dx = qx - cx;
+    const dy = qy - cy;
+    const px = Math.max(0, Math.min(source.width - 1, cx + dx * 1.04 + Math.sign(dx) * 1.5));
+    const py = Math.max(0, Math.min(source.height - 1, cy + dy * 1.10 + Math.sign(dy) * 1.5));
+    return [px, py] as Point2D;
+  }) as Quad;
+
+  const topW = Math.hypot(paddedQuad[1][0] - paddedQuad[0][0], paddedQuad[1][1] - paddedQuad[0][1]);
+  const botW = Math.hypot(paddedQuad[2][0] - paddedQuad[3][0], paddedQuad[2][1] - paddedQuad[3][1]);
+  const leftH = Math.hypot(paddedQuad[3][0] - paddedQuad[0][0], paddedQuad[3][1] - paddedQuad[0][1]);
+  const rightH = Math.hypot(paddedQuad[2][0] - paddedQuad[1][0], paddedQuad[2][1] - paddedQuad[1][1]);
 
   const w = Math.max(4, Math.round(Math.max(topW, botW)));
   const h = Math.max(4, Math.round(Math.max(leftH, rightH)));
@@ -472,15 +484,15 @@ export function cropBoxFromImageData(
       const invU = 1 - u;
 
       const sx =
-        invU * invV * quad[0][0] +
-        u * invV * quad[1][0] +
-        u * v * quad[2][0] +
-        invU * v * quad[3][0];
+        invU * invV * paddedQuad[0][0] +
+        u * invV * paddedQuad[1][0] +
+        u * v * paddedQuad[2][0] +
+        invU * v * paddedQuad[3][0];
       const sy =
-        invU * invV * quad[0][1] +
-        u * invV * quad[1][1] +
-        u * v * quad[2][1] +
-        invU * v * quad[3][1];
+        invU * invV * paddedQuad[0][1] +
+        u * invV * paddedQuad[1][1] +
+        u * v * paddedQuad[2][1] +
+        invU * v * paddedQuad[3][1];
 
       const x0 = Math.max(0, Math.min(srcW - 1, Math.floor(sx)));
       const y0 = Math.max(0, Math.min(srcH - 1, Math.floor(sy)));

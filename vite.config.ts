@@ -9,6 +9,32 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
+import type { Plugin } from "vite";
+
+/**
+ * Adds Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers
+ * to the Vite dev server so SharedArrayBuffer is available for WASM threading.
+ * These headers are also set in vercel.json for production.
+ */
+function coopCoepPlugin(): Plugin {
+  return {
+    name: "coop-coep-headers",
+    configureServer(server) {
+      server.middlewares.use((_req, res, next) => {
+        res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+        res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+        next();
+      });
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((_req, res, next) => {
+        res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+        res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig({
   tanstackStart: {
@@ -21,6 +47,7 @@ export default defineConfig({
   nitro: false,
   vite: {
     plugins: [
+      coopCoepPlugin(),
       VitePWA({
         // Don't auto-register in dev; register manually from the app shell
         // so we can control update prompts

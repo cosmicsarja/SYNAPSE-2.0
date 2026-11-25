@@ -15,6 +15,7 @@ import {
   detectTextBoxes,
   type DetectedBox,
 } from '@/workers/pipeline/detect';
+import { normalizeKannadaText } from '@/lib/formlens/kannadaNormalize';
 
 export interface RecognizedBoxResult {
   box: DetectedBox;
@@ -234,16 +235,19 @@ async function runRecBatch(
     const results: Array<{ text: string; confidence: number }> = [];
     for (let n = 0; n < N; n++) {
       const slice = raw.subarray(n * stride, (n + 1) * stride);
-      results.push(
-        ctcGreedyDecode(
-          slice,
-          T,
-          C,
-          loaded.vocab,
-          loaded.spec.blankIndex,
-          loaded.spec.outputIsProbabilities,
-        ),
+      const decoded = ctcGreedyDecode(
+        slice,
+        T,
+        C,
+        loaded.vocab,
+        loaded.spec.blankIndex,
+        loaded.spec.outputIsProbabilities,
       );
+      // Apply Kannada Unicode normalization to fix common PP-OCR artefacts
+      results.push({
+        text: normalizeKannadaText(decoded.text),
+        confidence: decoded.confidence,
+      });
     }
     return results;
   } finally {
