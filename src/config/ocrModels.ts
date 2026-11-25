@@ -6,13 +6,19 @@
 
 export const ORT_CONFIG = {
   /**
-   * Provider order: try WebGPU only if explicitly available; always fall back to wasm.
-   * We keep 'wasm' first here because WebGPU's initWasm() path in onnxruntime-web
-   * can poison the global WASM init state on failure, breaking subsequent sessions.
-   * WebGPU acceleration is re-enabled per-session when available.
+   * Provider order: use 'wasm' only so WebGPU init failure in a Worker
+   * never poisons the global WASM init state.
    */
   PROVIDERS: ['wasm'] as const,
   WASM_PATH: '/ort/',
+  /**
+   * Pass an object with only `wasm` (omitting `mjs`) so onnxruntime-web/wasm
+   * uses its bundled JS glue instead of dynamically importing `/ort/*.mjs`
+   * (which Vite dev server blocks because `/public` files cannot be imported as modules).
+   */
+  WASM_PATHS: {
+    wasm: '/ort/ort-wasm-simd-threaded.wasm',
+  },
   NUM_THREADS: 1,
 } as const;
 

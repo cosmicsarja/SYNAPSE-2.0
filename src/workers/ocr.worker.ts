@@ -15,7 +15,7 @@ import { PaddleOcrEngine } from './pipeline/paddle-engine';
 import type { OcrEngine, FieldType } from '@/config/model';
 
 // Configure ORT WASM once at module load — before any session is created.
-ort.env.wasm.wasmPaths = ORT_CONFIG.WASM_PATH;
+ort.env.wasm.wasmPaths = ORT_CONFIG.WASM_PATHS;
 ort.env.wasm.numThreads = ORT_CONFIG.NUM_THREADS;
 
 let engine: OcrEngine | null = null;

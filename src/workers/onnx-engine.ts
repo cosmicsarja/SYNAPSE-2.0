@@ -23,8 +23,9 @@ export class OnnxOcrEngine implements OcrEngine {
   private charset: string[] = [];
 
   async init(): Promise<void> {
-    // Set WASM path to local origin (never CDN)
-    ort.env.wasm.wasmPaths = MODEL_CONFIG.WASM_PATH;
+    // Set WASM path to local origin (never CDN), using object form so Vite dev
+    // doesn't try to import /ort/*.mjs from /public.
+    ort.env.wasm.wasmPaths = { wasm: `${MODEL_CONFIG.WASM_PATH}ort-wasm-simd-threaded.wasm` };
     ort.env.wasm.numThreads = 1; // single thread for reliability
 
     // Load charset
