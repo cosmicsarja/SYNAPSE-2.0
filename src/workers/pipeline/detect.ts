@@ -534,13 +534,20 @@ export function cropBoxFromImageData(
         rot[dstIdx + 3] = 255;
       }
     }
-    return { crop: new ImageData(rot, h, w), rotated90: true };
+    return { crop: makeImageData(rot, h, w), rotated90: true };
   }
 
-  return { crop: new ImageData(dst, w, h), rotated90: false };
+  return { crop: makeImageData(dst, w, h), rotated90: false };
 }
 
 /** Run full DBNet detection on a page ImageData. */
+
+function makeImageData(data: Uint8ClampedArray, width: number, height: number): ImageData {
+  if (typeof ImageData !== 'undefined') {
+    return new ImageData(data, width, height);
+  }
+  return { data, width, height } as ImageData;
+}
 export async function detectTextBoxes(
   image: ImageData,
   maxSideLen: number = DET_MODEL_CONFIG.maxSideLen,

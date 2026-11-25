@@ -15,7 +15,7 @@ import {
   detectTextBoxes,
   type DetectedBox,
 } from '@/workers/pipeline/detect';
-import { normalizeKannadaText } from '@/lib/formlens/kannadaNormalize';
+import { hasKannada, normalizeKannadaText } from '@/lib/formlens/kannadaNormalize';
 
 export interface RecognizedBoxResult {
   box: DetectedBox;
@@ -165,13 +165,111 @@ export async function getRecModels(): Promise<{ kn: LoadedRecModel; en: LoadedRe
   return cachedModels;
 }
 
-/** Resize crops to spec.inputHeight, pad to batch max width, BGR normalized [N, 3, H, W]. */
+/**
+ * Adaptive 2nd–98th percentile contrast stretch for low-contrast camera crops.
+ * Leaves already sharp high-contrast crops (range >= 175) untouched.
+ */
+export function enhanceCropForRecognition(crop: ImageData): ImageData {
+  const { data, width, height } = crop;
+  const totalPx = width * height;
+  if (totalPx < 16) return crop;
+
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < data.length; i += 4) {
+    const lum = Math.round(
+      0.299 * (data[i] ?? 255) + 0.587 * (data[i + 1] ?? 255) + 0.114 * (data[i + 2] ?? 255),
+    );
+    hist[lum]!++;
+  }
+
+  const lowTarget = Math.floor(totalPx * 0.02);
+  const highTarget = Math.ceil(totalPx * 0.98);
+  let acc = 0;
+  let p2 = 0;
+  let p98 = 255;
+  let foundLow = false;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v]!;
+    if (!foundLow && acc >= lowTarget) {
+      p2 = v;
+      foundLow = true;
+    }
+    if (acc >= highTarget) {
+      p98 = v;
+      break;
+    }
+  }
+
+  const range = p98 - p2;
+  if (range <= 15 || range >= 175) {
+    return crop;
+  }
+
+  const scale = 255 / range;
+  const out = new Uint8ClampedArray(data.length);
+  for (let i = 0; i < data.length; i += 4) {
+    out[i] = Math.max(0, Math.min(255, Math.round(((data[i] ?? 0) - p2) * scale)));
+    out[i + 1] = Math.max(0, Math.min(255, Math.round(((data[i + 1] ?? 0) - p2) * scale)));
+    out[i + 2] = Math.max(0, Math.min(255, Math.round(((data[i + 2] ?? 0) - p2) * scale)));
+    out[i + 3] = data[i + 3] ?? 255;
+  }
+
+  if (typeof ImageData !== 'undefined') {
+    return new ImageData(out, width, height);
+  }
+  return { data: out, width, height } as ImageData;
+}
+
+/**
+ * Smart bilingual script router between Kannada (ppocrv4-kannada) and Latin (ppocrv5-latin).
+ * - If Kannada decoded actual Kannada codepoints, gives Kannada an affinity bonus over
+ *   Latin lookalike gibberish unless Latin decoded pure digits/dates with higher confidence.
+ * - If neither decoded Kannada codepoints, prefers Latin when its confidence is comparable.
+ */
+export function selectBestScriptPrediction(
+  knP: { text: string; confidence: number },
+  enP: { text: string; confidence: number },
+  knModelId: string,
+  enModelId: string,
+): { text: string; confidence: number; model: string } {
+  const knOk = knP.text.length > 0;
+  const enOk = enP.text.length > 0;
+
+  if (!knOk && !enOk) return { text: '', confidence: 0, model: enModelId };
+  if (knOk && !enOk) return { text: knP.text, confidence: knP.confidence, model: knModelId };
+  if (!knOk && enOk) return { text: enP.text, confidence: enP.confidence, model: enModelId };
+
+  const knHasScript = hasKannada(knP.text);
+  const enIsPureNumericOrDate = /^[\d\s\-./:+,]+$/.test(enP.text);
+
+  if (knHasScript) {
+    if (enIsPureNumericOrDate && enP.confidence > knP.confidence + 0.08) {
+      return { text: enP.text, confidence: enP.confidence, model: enModelId };
+    }
+    if (knP.confidence >= 0.45 && knP.confidence + 0.08 >= enP.confidence) {
+      return { text: knP.text, confidence: knP.confidence, model: knModelId };
+    }
+  } else {
+    // Both outputs are ASCII/digits: ppocrv5-latin has full ASCII coverage
+    if (enP.confidence >= knP.confidence - 0.05) {
+      return { text: enP.text, confidence: enP.confidence, model: enModelId };
+    }
+  }
+
+  return knP.confidence >= enP.confidence
+    ? { text: knP.text, confidence: knP.confidence, model: knModelId }
+    : { text: enP.text, confidence: enP.confidence, model: enModelId };
+}
+
+/** Resize crops to spec.inputHeight with 4px quiet margin, pad to batch max width, BGR normalized [N, 3, H, W]. */
 function preprocessRecBatch(crops: ImageData[], spec: RecModelSpec): ort.Tensor {
   const H = spec.inputHeight;
   const maxW = spec.maxWidth;
+  const quietPadX = 4;
   const targetWidths = crops.map((c) => {
     const ratio = c.width / Math.max(1, c.height);
-    return Math.max(8, Math.min(maxW, Math.round(H * ratio)));
+    const contentW = Math.max(8, Math.min(maxW - quietPadX * 2, Math.round(H * ratio)));
+    return Math.min(maxW, contentW + quietPadX * 2);
   });
   const batchW = Math.max(...targetWidths, 32);
   const N = crops.length;
@@ -182,16 +280,19 @@ function preprocessRecBatch(crops: ImageData[], spec: RecModelSpec): ort.Tensor 
   const [s0, s1, s2] = spec.std;
 
   for (let n = 0; n < N; n++) {
-    const crop = crops[n]!;
+    const crop = enhanceCropForRecognition(crops[n]!);
     const tw = targetWidths[n]!;
+    const contentW = Math.max(8, tw - quietPadX * 2);
     const srcCanvas = new OffscreenCanvas(crop.width, crop.height);
     srcCanvas.getContext('2d')!.putImageData(crop, 0, 0);
 
     const dstCanvas = new OffscreenCanvas(tw, H);
     const dctx = dstCanvas.getContext('2d')!;
+    dctx.fillStyle = '#ffffff';
+    dctx.fillRect(0, 0, tw, H);
     dctx.imageSmoothingEnabled = true;
     dctx.imageSmoothingQuality = 'high';
-    dctx.drawImage(srcCanvas, 0, 0, crop.width, crop.height, 0, 0, tw, H);
+    dctx.drawImage(srcCanvas, 0, 0, crop.width, crop.height, quietPadX, 0, contentW, H);
 
     const px = dctx.getImageData(0, 0, tw, H).data;
     const baseOffset = n * 3 * plane;
@@ -282,20 +383,21 @@ export class PaddleOcrEngine implements OcrEngine {
       };
     }
 
-    // General text/name: run Kannada & Latin and pick higher confidence
+    // General text/name: run Kannada & Latin and route with script affinity
     const [[knRes], [enRes]] = await Promise.all([
       runRecBatch([crop], models.kn),
       runRecBatch([crop], models.en),
     ]);
-    const winner =
-      (knRes?.confidence ?? 0) >= (enRes?.confidence ?? 0) && (knRes?.text.length ?? 0) > 0
-        ? knRes
-        : enRes;
-    const text = winner?.text ?? '';
+    const winner = selectBestScriptPrediction(
+      knRes ?? { text: '', confidence: 0 },
+      enRes ?? { text: '', confidence: 0 },
+      models.kn.spec.id,
+      models.en.spec.id,
+    );
     return {
-      text,
-      confidence: winner?.confidence ?? 0,
-      script: detectDecodedScript(text),
+      text: winner.text,
+      confidence: winner.confidence,
+      script: detectDecodedScript(winner.text),
     };
   }
 
@@ -364,18 +466,10 @@ export class PaddleOcrEngine implements OcrEngine {
           chosenConf = enP.confidence;
           chosenModel = models.en.spec.id;
         } else {
-          // Script routing: pick higher confidence non-empty prediction
-          const knOk = knP.text.length > 0;
-          const enOk = enP.text.length > 0;
-          if (knOk && (!enOk || knP.confidence > enP.confidence)) {
-            chosenText = knP.text;
-            chosenConf = knP.confidence;
-            chosenModel = models.kn.spec.id;
-          } else {
-            chosenText = enP.text;
-            chosenConf = enP.confidence;
-            chosenModel = models.en.spec.id;
-          }
+          const picked = selectBestScriptPrediction(knP, enP, models.kn.spec.id, models.en.spec.id);
+          chosenText = picked.text;
+          chosenConf = picked.confidence;
+          chosenModel = picked.model;
         }
 
         results[origIdx] = {

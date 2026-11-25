@@ -26,15 +26,12 @@ const CONFUSION_PAIRS: [RegExp, string][] = [
   // Halanta (virama) followed by space sometimes emitted as ASCII hyphen
   [/-(?=[\u0C80-\u0CFF])/g, '\u0CCD'],           // hyphen before KN → virama
   [/(?<=[\u0C80-\u0CFF])-$/gm, ''],              // trailing hyphen after KN word
-  // Double virama → single
+  // Double virama / anusvara / visarga → single
   [/\u0CCD\u0CCD/g, '\u0CCD'],
-  // Stray ASCII period inside Kannada run → ideographic period
-  [/(?<=[\u0C80-\u0CFF])\.(?=[\u0C80-\u0CFF])/g, ''],
-  // Common letter confusions (empirically observed with PP-OCRv4-kn)
-  // ರ (U+0CB0) vs ಲ (U+0CB2) — model sometimes swaps them in certain fonts
-  // We only swap in a very specific pattern where ರ appears as word-final with no vowel
-  // → too risky to do blindly; skip
-
+  [/\u0C82\u0C82/g, '\u0C82'],
+  [/\u0C83\u0C83/g, '\u0C83'],
+  // Stray ASCII punctuation inside Kannada run → remove
+  [/(?<=[\u0C80-\u0CFF])[._|](?=[\u0C80-\u0CFF])/g, ''],
   // Strip leading/trailing noise characters around Kannada text
   [/^[\s\-–—|/\\]+/g, ''],
   [/[\s\-–—|/\\]+$/g, ''],
