@@ -93,13 +93,6 @@ function ScanPage() {
     void setSetting('selected_template', id);
   };
 
-  const handleCapture = useCallback((imageData: ImageData, dataUrl: string) => {
-    setCapturedImageData(imageData);
-    setCapturedDataUrl(dataUrl);
-    setOcrError(null);
-    setStep('crop');
-  }, []);
-
   const runLensOcr = useCallback(async (croppedData: ImageData, croppedUrl: string, mode: OcrLangMode = langMode) => {
     setStep('processing');
     setOcrError(null);
@@ -165,6 +158,14 @@ function ScanPage() {
       setStep('crop');
     }
   }, [initialize, recognize, recognizeFullPage, runPaddlePipeline, langMode]);
+
+  const handleCapture = useCallback((imageData: ImageData, dataUrl: string) => {
+    setCapturedImageData(imageData);
+    setCapturedDataUrl(dataUrl);
+    setOcrError(null);
+    // Auto-trigger detection immediately — skip the manual crop step
+    void runLensOcr(imageData, dataUrl);
+  }, [runLensOcr]);
 
   const handleSkipCrop = useCallback(() => {
     if (!capturedImageData || !capturedDataUrl) return;
@@ -406,6 +407,14 @@ function ScanPage() {
             <div className="text-sm text-muted-foreground">{statusMsg}</div>
           </div>
           <Progress value={progressPct} className="w-full max-w-xs h-2" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground"
+            onClick={() => setStep('crop')}
+          >
+            ← Adjust crop / Retake
+          </Button>
         </div>
       )}
 
