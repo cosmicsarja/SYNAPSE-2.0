@@ -74,12 +74,18 @@ function ScanPage() {
 
     try {
       const engine = await getSetting<OcrEngine>('ocr_engine', 'tesseract');
-      setStatusMsg(engine === 'tesseract' ? `Loading offline OCR (${mode})…` : `Starting ${engine} OCR…`);
+      setStatusMsg(
+        engine === 'cloud'
+          ? (navigator.onLine ? 'Sending to High-Accuracy OCR API…' : 'Offline — using local English + Kannada OCR…')
+          : engine === 'tesseract'
+            ? `Loading offline OCR (${mode})…`
+            : `Starting ${engine} OCR…`,
+      );
       await initialize(engine, mode);
 
       setStatusMsg('Reading text and numbers from image…');
 
-      if (engine === 'tesseract') {
+      if (engine === 'tesseract' || engine === 'cloud') {
         const res = await recognizeFullPage(croppedData, mode);
         setLines(res.lines);
         setFullText(res.fullText);

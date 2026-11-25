@@ -4,14 +4,15 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { BottomNav } from '@/components/formlens/BottomNav';
 import { OfflineStatusBar } from '@/components/formlens/OfflineStatusBar';
 import { OnlineIndicator } from '@/components/formlens/OfflineStatusBar';
+import { InstallBanner } from '@/components/formlens/InstallBanner';
 import { useStorageEstimate } from '@/hooks/formlens/useStorageEstimate';
-import { useInstallPrompt } from '@/hooks/formlens/useInstallPrompt';
 import { getSetting, setSetting, db } from '@/db';
 import type { OcrEngine } from '@/db/schema';
 import {
@@ -25,7 +26,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Download, HardDrive, Cpu, Languages, Cloud, Smartphone, Info } from 'lucide-react';
+import { Download, HardDrive, Cpu, Languages, Cloud, Info, ExternalLink } from 'lucide-react';
 
 export const Route = createFileRoute('/settings')({
   head: () => ({ meta: [{ title: 'Settings – FormLens' }] }),
@@ -34,36 +35,57 @@ export const Route = createFileRoute('/settings')({
 
 function SettingsPage() {
   const storage = useStorageEstimate();
-  const { canInstall, install } = useInstallPrompt();
-  const [ocrEngine, setOcrEngine] = useState<OcrEngine>('mock');
+  const [ocrEngine, setOcrEngine] = useState<OcrEngine>('tesseract');
+  const [cloudUrl, setCloudUrl] = useState('');
+  const [cloudTestStatus, setCloudTestStatus] = useState<string | null>(null);
   const [language, setLanguage] = useState<'en' | 'kn'>('en');
   const [packVersion, setPackVersion] = useState<string | null>(null);
   const [setupComplete, setSetupComplete] = useState(false);
   const [clearingForms, setClearingForms] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
 
-  // iOS detection
-  const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isStandalone = typeof window !== 'undefined' && ('standalone' in navigator) && (navigator as { standalone?: boolean }).standalone === true;
-
   useEffect(() => {
     Promise.all([
-      getSetting<OcrEngine>('ocr_engine', 'mock'),
+      getSetting<OcrEngine>('ocr_engine', 'tesseract'),
+      getSetting<string>('cloud_ocr_url', (import.meta.env.VITE_OCR_API_URL as string | undefined) ?? ''),
       getSetting<'en' | 'kn'>('language', 'en'),
       getSetting<string | null>('pack_version', null),
       getSetting<boolean>('setup_complete', false),
-    ]).then(([eng, lang, ver, setup]) => {
+    ]).then(([eng, url, lang, ver, setup]) => {
       setOcrEngine(eng);
+      setCloudUrl(url);
       setLanguage(lang);
       setPackVersion(ver);
       setSetupComplete(setup);
     });
   }, []);
 
-  const handleEngineToggle = async (useOnnx: boolean) => {
-    const engine: OcrEngine = useOnnx ? 'onnx' : 'mock';
+  const handleEngineSelect = async (engine: OcrEngine) => {
     setOcrEngine(engine);
     await setSetting('ocr_engine', engine);
+  };
+
+  const handleCloudUrlChange = async (val: string) => {
+    setCloudUrl(val);
+    setCloudTestStatus(null);
+    await setSetting('cloud_ocr_url', val.trim());
+  };
+
+  const handleTestCloud = async () => {
+    const base = cloudUrl.trim().replace(/\/$/, '');
+    if (!base) {
+      setCloudTestStatus('Enter your FastAPI URL first');
+      return;
+    }
+    setCloudTestStatus('Testing…');
+    try {
+      const res = await fetch(`${base}/health`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { status?: string };
+      setCloudTestStatus(`✓ Connected (${data.status ?? 'ok'})`);
+    } catch (err) {
+      setCloudTestStatus(`✗ Failed: ${err instanceof Error ? err.message : 'unreachable'}`);
+    }
   };
 
   const handleLanguageToggle = async (useKn: boolean) => {
@@ -107,26 +129,19 @@ function SettingsPage() {
       <div className="flex-1 overflow-y-auto pb-24">
 
         {/* Install prompt */}
-        {(canInstall || (isIos && !isStandalone)) && (
-          <>
-            <div className="px-4 py-4">
-              <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-2">
-                <div className="flex items-center gap-2 font-semibold text-sm">
-                  <Smartphone className="h-4 w-4 text-primary" />
-                  Install App
-                </div>
-                {isIos && !isStandalone
-                  ? <p className="text-xs text-muted-foreground">
-                      Tap the Share button and select <strong>"Add to Home Screen"</strong> to install FormLens.
-                      <br />ಷೇರ್ ಬಟನ್ ಒತ್ತಿ "Add to Home Screen" ಆಯ್ಕೆ ಮಾಡಿ.
-                    </p>
-                  : <Button size="sm" onClick={install}>Install</Button>
-                }
-              </div>
-            </div>
-            <Separator />
-          </>
-        )}
+        <InstallBanner variant="card" className="mx-4 mt-4" />
+        <div className="px-4 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-muted-foreground"
+            onClick={() => { window.location.href = '/install'; }}
+          >
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Get shareable install link / QR code
+          </Button>
+        </div>
+        <Separator />
 
         {/* Offline Pack */}
         <div className="px-4 py-4 space-y-3">
@@ -226,6 +241,11 @@ function SettingsPage() {
                   desc: 'Reads real text & numbers offline using local WASM OCR',
                 },
                 {
+                  id: 'cloud' as const,
+                  title: 'Hybrid Cloud + Offline OCR',
+                  desc: 'Uses Python Handwritten-Form-OCR API when online, falls back to offline OCR',
+                },
+                {
                   id: 'onnx' as const,
                   title: 'Custom ONNX Model',
                   desc: 'Uses /models/ocr_crnn_int8.onnx (requires trained model)',
@@ -257,6 +277,25 @@ function SettingsPage() {
               </button>
             ))}
           </div>
+          {ocrEngine === 'cloud' && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+              <Label className="text-xs">Python OCR Backend URL (FastAPI)</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="https://your-ocr-api.onrender.com"
+                  value={cloudUrl}
+                  onChange={(e) => void handleCloudUrlChange(e.target.value)}
+                  className="text-xs h-8"
+                />
+                <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={() => void handleTestCloud()}>
+                  Test
+                </Button>
+              </div>
+              {cloudTestStatus && (
+                <div className="text-xs text-muted-foreground">{cloudTestStatus}</div>
+              )}
+            </div>
+          )}
           {ocrEngine === 'onnx' && (
             <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 flex gap-2">
               <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />

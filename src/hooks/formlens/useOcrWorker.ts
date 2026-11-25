@@ -15,6 +15,7 @@ import {
   type FullPageOcrResult,
   type OcrLangMode,
 } from '@/workers/tesseract-engine';
+import { recognizeWithCloudBackend, getCloudOcrUrl } from '@/workers/cloud-engine';
 
 export interface OcrProgress {
   fieldIndex: number;
@@ -91,6 +92,26 @@ export function useOcrWorker(): UseOcrWorkerReturn {
       workerRef.current = null;
     }
 
+    if (engine === 'cloud') {
+      const url = await getCloudOcrUrl();
+      if (navigator.onLine && url) {
+        setReady(true);
+        setError(null);
+        return;
+      }
+      // Offline or no URL configured -> prepare local Tesseract fallback
+      try {
+        await initTesseract(langMode);
+        setReady(true);
+        setError(null);
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        throw err;
+      }
+    }
+
     if (engine === 'tesseract') {
       try {
         await initTesseract(langMode);
@@ -144,6 +165,13 @@ export function useOcrWorker(): UseOcrWorkerReturn {
   const recognizeFullPage = useCallback(
     async (imageData: ImageData, langMode: OcrLangMode = 'eng+kan'): Promise<FullPageOcrResult> => {
       setProgress({ fieldIndex: 0, totalFields: 1 });
+      if (engineRef.current === 'cloud') {
+        try {
+          return await recognizeWithCloudBackend(imageData, langMode);
+        } catch (err) {
+          console.warn('[HybridOCR] Cloud OCR unavailable, falling back to offline Tesseract:', err);
+        }
+      }
       return recognizeFullPageWithTesseract(imageData, langMode);
     },
     [],
