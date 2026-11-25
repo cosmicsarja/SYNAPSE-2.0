@@ -5,6 +5,8 @@
  */
 import type { FieldType, OcrResult, OcrScript } from '@/config/model';
 
+export type OcrLangMode = 'eng+kan' | 'eng' | 'kan';
+
 export interface OcrLine {
   text: string;
   confidence: number; // 0–1
@@ -19,6 +21,7 @@ export interface FullPageOcrResult {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sharedWorker: any = null;
+let currentLangMode: OcrLangMode = 'eng+kan';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let initPromise: Promise<any> | null = null;
 
@@ -32,9 +35,9 @@ function detectScript(text: string): OcrScript {
 
 /**
  * Preprocess ImageData for Tesseract:
- * - Convert to contrast-stretched grayscale so dim/uneven lighting reads crisply
- * - Upscale small crops so line height >= 96px
- * - Add 16px white padding around edges (prevents edge-clipping in LSTM)
+ * - Adaptive local thresholding via integral image (removes shadows / uneven lighting)
+ * - Upscales small crops so line height >= minHeight
+ * - Adds 16px white padding around edges (prevents edge-clipping in LSTM)
  */
 async function preprocessToPngBlob(crop: ImageData, minHeight = 96): Promise<Blob> {
   const srcW = Math.max(1, crop.width);
@@ -47,32 +50,65 @@ async function preprocessToPngBlob(crop: ImageData, minHeight = 96): Promise<Blo
   const targetH = Math.max(1, Math.round(srcH * scale));
   const pad = 16;
 
-  // Build contrast-stretched grayscale buffer on source
+  // Compute grayscale + O(W*H) integral image for shadow-resistant local thresholding
   const srcCanvas = document.createElement('canvas');
   srcCanvas.width = srcW;
   srcCanvas.height = srcH;
   const sctx = srcCanvas.getContext('2d')!;
-  const gray = new ImageData(new Uint8ClampedArray(crop.data), srcW, srcH);
+  const outImg = new ImageData(new Uint8ClampedArray(crop.data), srcW, srcH);
 
-  let minLum = 255;
-  let maxLum = 0;
-  for (let i = 0; i < gray.data.length; i += 4) {
-    const lum = 0.299 * (gray.data[i] ?? 0) + 0.587 * (gray.data[i + 1] ?? 0) + 0.114 * (gray.data[i + 2] ?? 0);
-    if (lum < minLum) minLum = lum;
-    if (lum > maxLum) maxLum = lum;
-  }
-  const range = maxLum - minLum;
-  if (range > 20) {
-    for (let i = 0; i < gray.data.length; i += 4) {
-      const lum = 0.299 * (gray.data[i] ?? 0) + 0.587 * (gray.data[i + 1] ?? 0) + 0.114 * (gray.data[i + 2] ?? 0);
-      const norm = Math.round(((lum - minLum) / range) * 255);
-      gray.data[i] = norm;
-      gray.data[i + 1] = norm;
-      gray.data[i + 2] = norm;
-      gray.data[i + 3] = 255;
+  const lum = new Float32Array(srcW * srcH);
+  const integral = new Float64Array((srcW + 1) * (srcH + 1));
+
+  for (let y = 0; y < srcH; y++) {
+    let rowSum = 0;
+    for (let x = 0; x < srcW; x++) {
+      const idx = (y * srcW + x) * 4;
+      const v =
+        0.299 * (crop.data[idx] ?? 0) +
+        0.587 * (crop.data[idx + 1] ?? 0) +
+        0.114 * (crop.data[idx + 2] ?? 0);
+      lum[y * srcW + x] = v;
+      rowSum += v;
+      integral[(y + 1) * (srcW + 1) + (x + 1)] =
+        integral[y * (srcW + 1) + (x + 1)]! + rowSum;
     }
   }
-  sctx.putImageData(gray, 0, 0);
+
+  const radius = Math.max(10, Math.min(40, Math.round(Math.min(srcW, srcH) * 0.04)));
+  for (let y = 0; y < srcH; y++) {
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(srcH - 1, y + radius);
+    for (let x = 0; x < srcW; x++) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(srcW - 1, x + radius);
+      const count = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const sum =
+        integral[(y1 + 1) * (srcW + 1) + (x1 + 1)]! -
+        integral[y0 * (srcW + 1) + (x1 + 1)]! -
+        integral[(y1 + 1) * (srcW + 1) + x0]! +
+        integral[y0 * (srcW + 1) + x0]!;
+      const localMean = sum / count;
+      const v = lum[y * srcW + x]!;
+
+      // Soft adaptive boost: ink significantly darker than local background -> crisp dark,
+      // background -> clean white, preserving anti-aliased edges for LSTM
+      const diff = localMean - v;
+      let val: number;
+      if (diff > 18) {
+        val = Math.max(0, Math.round(255 - diff * 3.2));
+      } else {
+        val = Math.min(255, Math.round(220 + (v - localMean) * 0.5));
+      }
+
+      const idx = (y * srcW + x) * 4;
+      outImg.data[idx] = val;
+      outImg.data[idx + 1] = val;
+      outImg.data[idx + 2] = val;
+      outImg.data[idx + 3] = 255;
+    }
+  }
+  sctx.putImageData(outImg, 0, 0);
 
   const outCanvas = document.createElement('canvas');
   outCanvas.width = targetW + pad * 2;
@@ -118,16 +154,27 @@ function recognizeCheckbox(crop: ImageData): OcrResult {
   };
 }
 
-export async function initTesseract(): Promise<void> {
-  if (sharedWorker) return;
+export async function initTesseract(langMode: OcrLangMode = 'eng+kan'): Promise<void> {
+  if (sharedWorker) {
+    if (currentLangMode !== langMode) {
+      const langs = langMode.split('+');
+      await sharedWorker.reinitialize(langs);
+      currentLangMode = langMode;
+    }
+    return;
+  }
   if (initPromise) {
     await initPromise;
+    if (sharedWorker && currentLangMode !== langMode) {
+      await sharedWorker.reinitialize(langMode.split('+'));
+      currentLangMode = langMode;
+    }
     return;
   }
 
   initPromise = (async () => {
     const { createWorker, OEM } = await import('tesseract.js');
-    const worker = await createWorker(['eng', 'kan'], OEM.LSTM_ONLY, {
+    const worker = await createWorker(langMode.split('+'), OEM.LSTM_ONLY, {
       workerBlobURL: false,
       workerPath: '/tesseract/worker.min.js',
       corePath: '/tesseract/',
@@ -135,6 +182,7 @@ export async function initTesseract(): Promise<void> {
       cacheMethod: 'write',
     });
     sharedWorker = worker;
+    currentLangMode = langMode;
     return worker;
   })();
 
@@ -180,8 +228,9 @@ export async function recognizeWithTesseract(
 
 export async function recognizeFullPageWithTesseract(
   imageData: ImageData,
+  langMode: OcrLangMode = 'eng+kan',
 ): Promise<FullPageOcrResult> {
-  await initTesseract();
+  await initTesseract(langMode);
   const { PSM } = await import('tesseract.js');
 
   await sharedWorker.setParameters({

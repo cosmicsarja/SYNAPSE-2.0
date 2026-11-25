@@ -13,6 +13,7 @@ import {
   recognizeWithTesseract,
   recognizeFullPageWithTesseract,
   type FullPageOcrResult,
+  type OcrLangMode,
 } from '@/workers/tesseract-engine';
 
 export interface OcrProgress {
@@ -25,9 +26,9 @@ interface UseOcrWorkerReturn {
   error: string | null;
   progress: OcrProgress | null;
   engineType: OcrEngine;
-  initialize: (engine: OcrEngine) => Promise<void>;
+  initialize: (engine: OcrEngine, langMode?: OcrLangMode) => Promise<void>;
   recognize: (params: RecognizeParams) => Promise<OcrResult>;
-  recognizeFullPage: (imageData: ImageData) => Promise<FullPageOcrResult>;
+  recognizeFullPage: (imageData: ImageData, langMode?: OcrLangMode) => Promise<FullPageOcrResult>;
 }
 
 interface RecognizeParams {
@@ -79,7 +80,7 @@ export function useOcrWorker(): UseOcrWorkerReturn {
     }
   }, []);
 
-  const initialize = useCallback(async (engine: OcrEngine) => {
+  const initialize = useCallback(async (engine: OcrEngine, langMode: OcrLangMode = 'eng+kan') => {
     engineRef.current = engine;
     setEngineType(engine);
     setReady(false);
@@ -92,7 +93,7 @@ export function useOcrWorker(): UseOcrWorkerReturn {
 
     if (engine === 'tesseract') {
       try {
-        await initTesseract();
+        await initTesseract(langMode);
         setReady(true);
         setError(null);
         return;
@@ -141,9 +142,9 @@ export function useOcrWorker(): UseOcrWorkerReturn {
   );
 
   const recognizeFullPage = useCallback(
-    async (imageData: ImageData): Promise<FullPageOcrResult> => {
+    async (imageData: ImageData, langMode: OcrLangMode = 'eng+kan'): Promise<FullPageOcrResult> => {
       setProgress({ fieldIndex: 0, totalFields: 1 });
-      return recognizeFullPageWithTesseract(imageData);
+      return recognizeFullPageWithTesseract(imageData, langMode);
     },
     [],
   );

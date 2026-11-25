@@ -13,7 +13,7 @@ import { OfflineStatusBar } from '@/components/formlens/OfflineStatusBar';
 import { useOcrWorker } from '@/hooks/formlens/useOcrWorker';
 import { getSetting, saveFormWithFields } from '@/db';
 import type { FormField, OcrEngine } from '@/db/schema';
-import type { OcrLine } from '@/workers/tesseract-engine';
+import type { OcrLine, OcrLangMode } from '@/workers/tesseract-engine';
 
 export const Route = createFileRoute('/scan')({
   head: () => ({ meta: [{ title: 'Scan – FormLens' }] }),
@@ -47,6 +47,7 @@ function ScanPage() {
   const { initialize, recognize, recognizeFullPage } = useOcrWorker();
 
   const [step, setStep] = useState<ScanStep>('camera');
+  const [langMode, setLangMode] = useState<OcrLangMode>('eng+kan');
   const [capturedDataUrl, setCapturedDataUrl] = useState<string | null>(null);
   const [capturedImageData, setCapturedImageData] = useState<ImageData | null>(null);
 
@@ -65,7 +66,7 @@ function ScanPage() {
     setStep('crop');
   }, []);
 
-  const runLensOcr = useCallback(async (croppedData: ImageData, croppedUrl: string) => {
+  const runLensOcr = useCallback(async (croppedData: ImageData, croppedUrl: string, mode: OcrLangMode = langMode) => {
     setStep('processing');
     setOcrError(null);
     setLensImageData(croppedData);
@@ -73,13 +74,13 @@ function ScanPage() {
 
     try {
       const engine = await getSetting<OcrEngine>('ocr_engine', 'tesseract');
-      setStatusMsg(engine === 'tesseract' ? 'Loading offline English + Kannada OCR…' : `Starting ${engine} OCR…`);
-      await initialize(engine);
+      setStatusMsg(engine === 'tesseract' ? `Loading offline OCR (${mode})…` : `Starting ${engine} OCR…`);
+      await initialize(engine, mode);
 
       setStatusMsg('Reading text and numbers from image…');
 
       if (engine === 'tesseract') {
-        const res = await recognizeFullPage(croppedData);
+        const res = await recognizeFullPage(croppedData, mode);
         setLines(res.lines);
         setFullText(res.fullText);
       } else {
@@ -103,7 +104,7 @@ function ScanPage() {
       setOcrError(err instanceof Error ? err.message : 'OCR failed');
       setStep('crop');
     }
-  }, [initialize, recognize, recognizeFullPage]);
+  }, [initialize, recognize, recognizeFullPage, langMode]);
 
   const handleSkipCrop = useCallback(() => {
     if (!capturedImageData || !capturedDataUrl) return;
@@ -181,10 +182,32 @@ function ScanPage() {
         </div>
       )}
 
-      {/* Step 2: 4-corner perspective crop (with Skip Crop option) */}
+      {/* Step 2: 4-corner perspective crop (with Skip Crop & script toggle) */}
       {step === 'crop' && capturedDataUrl && capturedImageData && (
         <div className="flex-1 relative flex flex-col min-h-0">
-          <div className="bg-black px-4 pt-2 flex justify-end">
+          <div className="bg-black px-3 pt-2 flex items-center justify-between gap-2">
+            <div className="flex gap-1">
+              {(
+                [
+                  { id: 'eng+kan' as const, label: 'EN + ಕನ್ನಡ' },
+                  { id: 'eng' as const, label: 'English' },
+                  { id: 'kan' as const, label: 'ಕನ್ನಡ' },
+                ]
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setLangMode(m.id)}
+                  className={`rounded px-2 py-1 text-xs font-medium ${
+                    langMode === m.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-white/15 text-white hover:bg-white/25'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
             <Button
               size="sm"
               variant="secondary"
