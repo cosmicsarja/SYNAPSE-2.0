@@ -9,3 +9,4 @@ export const config = { runtime: 'edge' };
 export default function (request) {
   return handler.fetch(request, {}, {});
 }
+
