@@ -2,12 +2,13 @@
  * Bottom navigation bar for the main app screens.
  */
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { Camera, FileText, Settings } from 'lucide-react';
+import { Camera, FileText, Settings, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { to: '/scan' as const, label: 'Scan', icon: Camera },
   { to: '/forms' as const, label: 'Forms', icon: FileText },
+  { to: '/install' as const, label: 'Install', icon: Download },
   { to: '/settings' as const, label: 'Settings', icon: Settings },
 ];
 
@@ -37,4 +38,3 @@ export function BottomNav() {
     </nav>
   );
 }
-
