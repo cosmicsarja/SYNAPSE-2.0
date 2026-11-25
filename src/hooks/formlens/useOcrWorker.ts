@@ -16,10 +16,12 @@ import {
   type OcrLangMode,
 } from '@/workers/tesseract-engine';
 import { recognizeWithCloudBackend, getCloudOcrUrl } from '@/workers/cloud-engine';
+import type { FullPipelineOutput } from '@/workers/pipeline/paddle-engine';
 
 export interface OcrProgress {
   fieldIndex: number;
   totalFields: number;
+  stage?: string;
 }
 
 interface UseOcrWorkerReturn {
@@ -30,6 +32,12 @@ interface UseOcrWorkerReturn {
   initialize: (engine: OcrEngine, langMode?: OcrLangMode) => Promise<void>;
   recognize: (params: RecognizeParams) => Promise<OcrResult>;
   recognizeFullPage: (imageData: ImageData, langMode?: OcrLangMode) => Promise<FullPageOcrResult>;
+  runPaddlePipeline: (
+    imageData: ImageData,
+    langMode?: OcrLangMode,
+    maxSideLen?: number,
+    onProgress?: (stage: string, done: number, total: number) => void,
+  ) => Promise<FullPipelineOutput>;
 }
 
 interface RecognizeParams {
@@ -47,6 +55,9 @@ export function useOcrWorker(): UseOcrWorkerReturn {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<OcrProgress | null>(null);
   const pendingRef = useRef<Map<string, { resolve: (r: OcrResult) => void; reject: (e: Error) => void }>>(new Map());
+  const pipelinePendingRef = useRef<
+    Map<string, { resolve: (r: FullPipelineOutput) => void; reject: (e: Error) => void; onProgress?: (stage: string, done: number, total: number) => void }>
+  >(new Map());
 
   const handleMessage = useCallback((event: MessageEvent<WorkerResponse>) => {
     const msg = event.data;
@@ -58,6 +69,19 @@ export function useOcrWorker(): UseOcrWorkerReturn {
       case 'progress':
         setProgress({ fieldIndex: msg.fieldIndex, totalFields: msg.totalFields });
         break;
+      case 'pipeline-progress': {
+        setProgress({ fieldIndex: msg.done, totalFields: msg.total, stage: msg.stage });
+        pipelinePendingRef.current.get(msg.id)?.onProgress?.(msg.stage, msg.done, msg.total);
+        break;
+      }
+      case 'pipeline-result': {
+        const pending = pipelinePendingRef.current.get(msg.id);
+        if (pending) {
+          pending.resolve({ results: msg.results, timings: msg.timings });
+          pipelinePendingRef.current.delete(msg.id);
+        }
+        break;
+      }
       case 'result': {
         const pending = pendingRef.current.get(msg.id);
         if (pending) {
@@ -72,6 +96,11 @@ export function useOcrWorker(): UseOcrWorkerReturn {
           if (pending) {
             pending.reject(new Error(msg.message));
             pendingRef.current.delete(msg.id);
+          }
+          const pPending = pipelinePendingRef.current.get(msg.id);
+          if (pPending) {
+            pPending.reject(new Error(msg.message));
+            pipelinePendingRef.current.delete(msg.id);
           }
         } else {
           setError(msg.message);
@@ -177,11 +206,38 @@ export function useOcrWorker(): UseOcrWorkerReturn {
     [],
   );
 
-  return { ready, error, progress, engineType, initialize, recognize, recognizeFullPage };
+  const runPaddlePipeline = useCallback(
+    async (
+      imageData: ImageData,
+      langMode: OcrLangMode = 'eng+kan',
+      maxSideLen?: number,
+      onProgress?: (stage: string, done: number, total: number) => void,
+    ): Promise<FullPipelineOutput> => {
+      if (!workerRef.current) {
+        return Promise.reject(new Error('Paddle worker not initialized'));
+      }
+      const id = `${Date.now()}-${Math.random()}`;
+      return new Promise((resolve, reject) => {
+        pipelinePendingRef.current.set(id, { resolve, reject, onProgress });
+        workerRef.current!.postMessage({
+          type: 'detect-and-recognize',
+          id,
+          imageData,
+          maxSideLen,
+          langMode,
+        });
+      });
+    },
+    [],
+  );
+
+  return { ready, error, progress, engineType, initialize, recognize, recognizeFullPage, runPaddlePipeline };
 }
 
 type WorkerResponse =
   | { type: 'init-done' }
   | { type: 'progress'; fieldIndex: number; totalFields: number }
+  | { type: 'pipeline-progress'; id: string; stage: string; done: number; total: number }
+  | { type: 'pipeline-result'; id: string; results: FullPipelineOutput['results']; timings: FullPipelineOutput['timings'] }
   | { type: 'result'; id: string; text: string; confidence: number; script: string }
   | { type: 'error'; id?: string; message: string };

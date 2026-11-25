@@ -7,8 +7,9 @@ import Dexie, { type Table } from 'dexie';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type FormStatus = 'draft' | 'reviewed' | 'synced';
-export type OcrEngine = 'tesseract' | 'cloud' | 'onnx' | 'mock';
+export type OcrEngine = 'paddle' | 'tesseract' | 'cloud' | 'onnx' | 'mock';
 export type AppLanguage = 'en' | 'kn';
+export type ScanMode = 'auto' | 'template';
 
 export interface SavedForm {
   id?: number;              // auto-increment PK
@@ -19,6 +20,11 @@ export interface SavedForm {
   createdAt: number;        // Date.now()
   updatedAt: number;
   thumbnailDataUrl?: string; // base64 jpeg crop of the scanned image
+  imageDataUrl?: string;    // full perspective-corrected page image for bbox review
+  imageWidth?: number;
+  imageHeight?: number;
+  scanMode?: ScanMode;
+  timingsJson?: string;
   supabaseId?: string;      // set after successful sync
 }
 
@@ -34,6 +40,10 @@ export interface FormField {
   confidence: number;       // 0–1
   wasEdited: boolean;
   cropDataUrl?: string;     // base64 crop of this field's region
+  normBbox?: [number, number, number, number]; // [x0, y0, x1, y1] normalized 0-1
+  script?: 'kn' | 'en' | 'mixed';
+  model?: string;
+  category?: 'paired' | 'other' | 'template';
 }
 
 export interface AppSettings {
@@ -70,6 +80,14 @@ export class FormLensDB extends Dexie {
     this.version(1).stores({
       forms:     '++id, templateId, status, createdAt, updatedAt, supabaseId',
       formFields:'++id, formId, fieldId',
+      settings:  'key',
+      syncQueue: '++id, formId, createdAt',
+    });
+
+    // Non-destructive v2 migration for scanMode, normalized bboxes, script & model metadata
+    this.version(2).stores({
+      forms:     '++id, templateId, status, createdAt, updatedAt, supabaseId, scanMode',
+      formFields:'++id, formId, fieldId, category',
       settings:  'key',
       syncQueue: '++id, formId, createdAt',
     });
