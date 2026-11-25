@@ -13,6 +13,9 @@ import { OfflineStatusBar } from '@/components/formlens/OfflineStatusBar';
 import { OnlineIndicator } from '@/components/formlens/OfflineStatusBar';
 import { InstallBanner } from '@/components/formlens/InstallBanner';
 import { useStorageEstimate } from '@/hooks/formlens/useStorageEstimate';
+import { useOcrWorker } from '@/hooks/formlens/useOcrWorker';
+import { runDiagnosticsBenchmark, type BenchPageResult } from '@/lib/formlens/benchmark';
+import type { PipelineTimings } from '@/workers/pipeline/paddle-engine';
 import { getSetting, setSetting, db } from '@/db';
 import type { OcrEngine } from '@/db/schema';
 import {
@@ -26,7 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Download, HardDrive, Cpu, Languages, Cloud, Info, ExternalLink } from 'lucide-react';
+import { Download, HardDrive, Cpu, Languages, Cloud, Info, ExternalLink, Activity } from 'lucide-react';
 
 export const Route = createFileRoute('/settings')({
   head: () => ({ meta: [{ title: 'Settings – FormLens' }] }),
@@ -35,7 +38,8 @@ export const Route = createFileRoute('/settings')({
 
 function SettingsPage() {
   const storage = useStorageEstimate();
-  const [ocrEngine, setOcrEngine] = useState<OcrEngine>('tesseract');
+  const { initialize, runPaddlePipeline } = useOcrWorker();
+  const [ocrEngine, setOcrEngine] = useState<OcrEngine>('paddle');
   const [cloudUrl, setCloudUrl] = useState('');
   const [cloudTestStatus, setCloudTestStatus] = useState<string | null>(null);
   const [language, setLanguage] = useState<'en' | 'kn'>('en');
@@ -43,22 +47,52 @@ function SettingsPage() {
   const [setupComplete, setSetupComplete] = useState(false);
   const [clearingForms, setClearingForms] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
+  const [detMaxSide, setDetMaxSide] = useState<number>(960);
+  const [lastTimings, setLastTimings] = useState<PipelineTimings | null>(null);
+  const [benchResults, setBenchResults] = useState<BenchPageResult[] | null>(null);
+  const [benchRunning, setBenchRunning] = useState(false);
+  const [benchError, setBenchError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      getSetting<OcrEngine>('ocr_engine', 'tesseract'),
+      getSetting<OcrEngine>('ocr_engine', 'paddle'),
       getSetting<string>('cloud_ocr_url', (import.meta.env.VITE_OCR_API_URL as string | undefined) ?? ''),
       getSetting<'en' | 'kn'>('language', 'en'),
       getSetting<string | null>('pack_version', null),
       getSetting<boolean>('setup_complete', false),
-    ]).then(([eng, url, lang, ver, setup]) => {
+      getSetting<number>('det_max_side', 960),
+      db.forms.orderBy('createdAt').reverse().first(),
+    ]).then(([eng, url, lang, ver, setup, maxSide, latestForm]) => {
       setOcrEngine(eng);
       setCloudUrl(url);
       setLanguage(lang);
       setPackVersion(ver);
       setSetupComplete(setup);
+      setDetMaxSide(maxSide);
+      if (latestForm?.timingsJson) {
+        try {
+          setLastTimings(JSON.parse(latestForm.timingsJson) as PipelineTimings);
+        } catch { /* ignore */ }
+      }
     });
   }, []);
+
+  const handleRunBenchmark = async () => {
+    setBenchRunning(true);
+    setBenchError(null);
+    try {
+      await initialize('paddle', 'eng+kan');
+      const res = await runDiagnosticsBenchmark((img) =>
+        runPaddlePipeline(img, 'eng+kan', detMaxSide),
+      );
+      setBenchResults(res);
+      if (res[0]) setLastTimings(res[0].timings);
+    } catch (err) {
+      setBenchError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBenchRunning(false);
+    }
+  };
 
   const handleEngineSelect = async (engine: OcrEngine) => {
     setOcrEngine(engine);
@@ -236,9 +270,14 @@ function SettingsPage() {
             {(
               [
                 {
+                  id: 'paddle' as const,
+                  title: 'PP-OCRv4/v5 Offline (Auto Detect + ಕನ್ನಡ/EN)',
+                  desc: 'Recommended: on-device DBNet text detection + Kannada & Latin ONNX recognition',
+                },
+                {
                   id: 'tesseract' as const,
-                  title: 'On-device OCR (English + Kannada)',
-                  desc: 'Reads real text & numbers offline using local WASM OCR',
+                  title: 'Tesseract Offline (English + Kannada)',
+                  desc: 'Legacy WASM LSTM fallback',
                 },
                 {
                   id: 'cloud' as const,
@@ -339,6 +378,85 @@ function SettingsPage() {
             Sign in with Supabase to sync forms across devices. The app works fully without signing in.
           </div>
           <SupabaseAuth />
+        </div>
+
+        <Separator />
+
+        {/* Diagnostics & Benchmark */}
+        <div className="px-4 py-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            <Activity className="h-4 w-4" />
+            DIAGNOSTICS &amp; BENCHMARK
+          </div>
+
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Detection Max Side (px)</span>
+            <select
+              value={detMaxSide}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setDetMaxSide(v);
+                void setSetting('det_max_side', v);
+              }}
+              className="rounded border px-2 py-1 bg-background text-xs"
+            >
+              <option value={960}>960 px (Fast / 2GB RAM)</option>
+              <option value={1280}>1280 px (High Detail)</option>
+            </select>
+          </div>
+
+          {lastTimings && (
+            <div className="rounded-lg border bg-muted/30 p-3 text-xs space-y-1">
+              <div className="font-medium">Last Scan Timings</div>
+              <div>Detector load: {lastTimings.detLoadMs} ms · Rec load: {lastTimings.recLoadMs} ms</div>
+              <div>Detect: {lastTimings.detectMs} ms · Recognize: {lastTimings.recognizeMs} ms ({lastTimings.avgRecPerBoxMs} ms/box)</div>
+              {lastTimings.peakMemoryMB !== null && (
+                <div>JS Heap Used: {lastTimings.peakMemoryMB} MB</div>
+              )}
+            </div>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={benchRunning}
+            onClick={() => void handleRunBenchmark()}
+          >
+            {benchRunning ? 'Running Offline Benchmark…' : 'Run Benchmark (public/bench/pages/)'}
+          </Button>
+
+          {benchError && (
+            <div className="text-xs text-red-600">{benchError}</div>
+          )}
+
+          {benchResults && (
+            <div className="space-y-2 text-xs">
+              {benchResults.map((b) => (
+                <div key={b.pageId} className="rounded-lg border p-2.5 space-y-1 bg-card">
+                  <div className="font-semibold">{b.pageId} ({b.boxesDetected} boxes)</div>
+                  {b.detPrecision !== null && b.detRecall !== null && (
+                    <div>
+                      Detection @ IoU 0.5 — Precision: {(b.detPrecision * 100).toFixed(1)}% · Recall: {(b.detRecall * 100).toFixed(1)}%
+                    </div>
+                  )}
+                  <div>
+                    Confidence: ≥85% ({b.confHistogram.high}) · 60–85% ({b.confHistogram.medium}) · &lt;60% ({b.confHistogram.low})
+                  </div>
+                  {(['en', 'kn', 'mixed'] as const).map((sc) =>
+                    b.cerByScript[sc].count > 0 ? (
+                      <div key={sc}>
+                        Script {sc.toUpperCase()} ({b.cerByScript[sc].count}): CER {(b.cerByScript[sc].cer * 100).toFixed(1)}% · Exact {(b.cerByScript[sc].exactMatch * 100).toFixed(0)}%
+                      </div>
+                    ) : null,
+                  )}
+                  <div className="text-muted-foreground">
+                    Detect {b.timings.detectMs} ms · Rec {b.timings.recognizeMs} ms ({b.timings.avgRecPerBoxMs} ms/box)
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <Separator />

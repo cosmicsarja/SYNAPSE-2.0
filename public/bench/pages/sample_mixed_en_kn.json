@@ -1,0 +1,45 @@
+{
+  "image": "/bench/pages/sample_mixed_en_kn.png",
+  "boxes": [
+    {
+      "bbox": [
+        40,
+        48,
+        380,
+        92
+      ],
+      "text": "Name: Ramesh Kumar",
+      "script": "en"
+    },
+    {
+      "bbox": [
+        40,
+        123,
+        355,
+        167
+      ],
+      "text": "Mobile: 9876543210",
+      "script": "en"
+    },
+    {
+      "bbox": [
+        40,
+        198,
+        290,
+        245
+      ],
+      "text": "ಹೆಸರು: ರಮೇಶ್",
+      "script": "kn"
+    },
+    {
+      "bbox": [
+        40,
+        273,
+        300,
+        317
+      ],
+      "text": "Pincode: 560001",
+      "script": "en"
+    }
+  ]
+}
