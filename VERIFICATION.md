@@ -37,3 +37,11 @@
 - `npx vite preview --port 4173`:
   - `/`, `/scan`, `/setup`, `/settings`, `/models/manifest.json`, `/models/ppocrv4_det.v1.onnx`, `/models/ppocrv4_dict_kannada.v1.txt`, `/sw.js`, `/ort/ort-wasm-simd-threaded.wasm` all returned **HTTP 200**.
 - **Manual Browser Step Remaining:** Complete the in-app `/setup` offline pack download in Chrome/Edge, switch DevTools Network to **Offline**, reload, and run a scan in **Auto** and **Template** modes to confirm zero network requests in your browser session.
+
+## 5. Feature 1: Offline Image Quality Check
+- **Files added/updated:** `src/config/quality.ts`, `src/lib/formlens/imageQuality.ts`, `src/routes/scan.tsx`, `src/test/image-quality.test.ts`
+- **Passed:**
+  - `npm test`: `src/test/image-quality.test.ts` (4/4 tests passed: sharp checkerboard passes, flat/blurry image flagged, dark image flagged, overexposed image flagged with English + Kannada messages). Total: 11/11 tests passed.
+  - `npm run build`: exited `0`, generated `dist/client/sw.js` (57 precached files, 2.02 MB).
+  - `npx vite preview --port 4175`: `/scan` and `/sw.js` returned HTTP 200; quality analysis runs 100% locally in JS/memory with zero network calls.
+- **Not verified in live browser here:** Interactive DevTools Offline camera/file upload UI click-through on `/scan` (no headless browser/Playwright installed in this environment).

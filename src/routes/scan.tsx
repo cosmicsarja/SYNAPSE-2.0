@@ -21,13 +21,19 @@ import {
   pairLabelsAndValues,
   type TemplateFieldDef,
 } from '@/lib/formlens/boxAssignment';
+import {
+  assessImageQuality,
+  getQualityWarningMessages,
+  type ImageQualityReport,
+} from '@/lib/formlens/imageQuality';
+import { QUALITY_MESSAGES } from '@/config/quality';
 
 export const Route = createFileRoute('/scan')({
   head: () => ({ meta: [{ title: 'Scan – FormLens' }] }),
   component: ScanPage,
 });
 
-type ScanStep = 'camera' | 'crop' | 'processing' | 'lens';
+type ScanStep = 'camera' | 'quality-warning' | 'crop' | 'processing' | 'lens';
 
 interface TemplateJson {
   id: string;
@@ -75,6 +81,7 @@ function ScanPage() {
   const [statusMsg, setStatusMsg] = useState('Initializing on-device OCR…');
   const [progressPct, setProgressPct] = useState(15);
   const [ocrError, setOcrError] = useState<string | null>(null);
+  const [qualityReport, setQualityReport] = useState<ImageQualityReport | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Restore persisted scan mode & template choice from Dexie
@@ -163,6 +170,13 @@ function ScanPage() {
     setCapturedImageData(imageData);
     setCapturedDataUrl(dataUrl);
     setOcrError(null);
+    const report = assessImageQuality(imageData);
+    if (report.hasIssue) {
+      setQualityReport(report);
+      setStep('quality-warning');
+      return;
+    }
+    setQualityReport(null);
     // Auto-trigger detection immediately — skip the manual crop step
     void runLensOcr(imageData, dataUrl);
   }, [runLensOcr]);
@@ -301,6 +315,7 @@ function ScanPage() {
     setTimings(null);
     setFullText('');
     setOcrError(null);
+    setQualityReport(null);
     setStep('camera');
   };
 
@@ -318,6 +333,61 @@ function ScanPage() {
           <BottomNav />
         </div>
       )}
+
+      {/* Step 1.5: Image Quality Warning */}
+      {step === 'quality-warning' && capturedDataUrl && capturedImageData && qualityReport && (() => {
+        const msg = getQualityWarningMessages(qualityReport);
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 py-4">
+            <div className="w-full max-w-sm overflow-hidden rounded-xl border bg-black/5">
+              <img
+                src={capturedDataUrl}
+                alt="Captured form preview"
+                className="max-h-60 w-full object-contain"
+              />
+            </div>
+
+            <div className="max-w-sm text-center space-y-2">
+              <div className="text-lg font-semibold text-amber-700 dark:text-amber-400">
+                {msg.titleEn}
+              </div>
+              <div className="text-base font-medium text-amber-700/90 dark:text-amber-300">
+                {msg.titleKn}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {QUALITY_MESSAGES.hintEn}
+                <br />
+                {QUALITY_MESSAGES.hintKn}
+              </p>
+              <div className="flex justify-center gap-4 pt-1 text-xs text-muted-foreground font-mono">
+                <span>Blur: {qualityReport.blurScore}</span>
+                <span>Brightness: {qualityReport.brightnessScore}/255</span>
+              </div>
+            </div>
+
+            <div className="flex w-full max-w-sm gap-3">
+              <Button
+                variant="outline"
+                className="flex-1 h-auto py-2.5 flex-col gap-0.5"
+                onClick={resetToCamera}
+              >
+                <span>{QUALITY_MESSAGES.retakeEn}</span>
+                <span className="text-[11px] font-normal opacity-80">{QUALITY_MESSAGES.retakeKn}</span>
+              </Button>
+              <Button
+                className="flex-1 h-auto py-2.5 flex-col gap-0.5"
+                onClick={() => {
+                  setQualityReport(null);
+                  void runLensOcr(capturedImageData, capturedDataUrl);
+                }}
+              >
+                <span>{QUALITY_MESSAGES.useAnywayEn}</span>
+                <span className="text-[11px] font-normal opacity-80">{QUALITY_MESSAGES.useAnywayKn}</span>
+              </Button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Step 2: 4-corner perspective crop + Mode & Language selectors */}
       {step === 'crop' && capturedDataUrl && capturedImageData && (
