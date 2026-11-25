@@ -125,3 +125,4 @@ export function InstallBanner({ variant = 'card', className }: InstallBannerProp
     </div>
   );
 }
+
