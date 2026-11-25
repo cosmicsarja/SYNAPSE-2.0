@@ -15,9 +15,10 @@ import { getFormWithFields, updateFormField, markFormReviewed, saveCorrection, d
 import type { SavedForm, FormField } from '@/db/schema';
 import type { FieldType } from '@/config/model';
 import { exportJson, exportCsv, exportPdf, exportAnnotatedPng } from '@/lib/formlens/exports';
+import { JsonToPdfDialog } from '@/components/formlens/JsonToPdfDialog';
 import { dataUrlToPngBlob } from '@/lib/formlens/corrections';
 import { enqueueSyncForm } from '@/lib/formlens/syncQueue';
-import { ChevronLeft, Download } from 'lucide-react';
+import { ChevronLeft, Download, FileJson } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,6 +69,7 @@ function ReviewPage() {
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [selectedFieldId, setSelectedFieldId] = useState<number | null>(null);
   const [rerunningId, setRerunningId] = useState<number | null>(null);
+  const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -247,6 +249,12 @@ function ReviewPage() {
             {fields.length} fields · <ConfidenceBadge confidence={avgConf} />
           </div>
         </div>
+        {/* Editable JSON -> PDF */}
+        <Button variant="outline" size="sm" onClick={() => setJsonDialogOpen(true)}>
+          <FileJson className="h-4 w-4 mr-1" />
+          JSON → PDF
+        </Button>
+
         {/* Export dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -369,6 +377,22 @@ function ReviewPage() {
           {saving ? 'Saving…' : 'Save & Done'}
         </Button>
       </div>
+
+      <JsonToPdfDialog
+        open={jsonDialogOpen}
+        onOpenChange={setJsonDialogOpen}
+        form={form}
+        fields={fields}
+        onApplyJsonValues={async (updates) => {
+          for (let i = 0; i < updates.length; i++) {
+            const upd = updates[i]!;
+            const target = fields.find((f) => f.fieldId === upd.key) ?? fields[i];
+            if (target?.id !== undefined && target.textValue !== upd.value) {
+              await handleValueChange(target.id, upd.value);
+            }
+          }
+        }}
+      />
     </div>
   );
 }
