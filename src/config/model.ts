@@ -26,11 +26,11 @@
  */
 
 export const MODEL_CONFIG = {
-  /** Fixed input height in pixels. */
-  INPUT_HEIGHT: 32,
+  /** Fixed input height in pixels (matches exported EasyOCR VGG+BiLSTM CRNN). */
+  INPUT_HEIGHT: 64,
 
-  /** Maximum width — wider crops are scaled down before padding. */
-  MAX_WIDTH: 512,
+  /** Maximum width — wider crops are scaled down before inference. */
+  MAX_WIDTH: 1024,
 
   /** ONNX model path (relative to origin, served from public/). */
   MODEL_PATH: '/models/ocr_crnn_int8.onnx',

@@ -170,9 +170,9 @@ export function preprocessImage(crop: ImageData): ort.Tensor {
   const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
   ctx.putImageData(crop, 0, 0);
 
-  // Calculate target width preserving aspect ratio
-  const scale = H / crop.height;
-  const targetW = Math.min(Math.round(crop.width * scale), maxW);
+  // Calculate target width preserving aspect ratio (minimum 16px for VGG convs)
+  const scale = H / Math.max(1, crop.height);
+  const targetW = Math.max(16, Math.min(Math.round(crop.width * scale), maxW));
 
   const resized = new OffscreenCanvas(targetW, H);
   const rctx = resized.getContext('2d') as OffscreenCanvasRenderingContext2D;
@@ -186,7 +186,8 @@ export function preprocessImage(crop: ImageData): ort.Tensor {
     const r = imageData.data[idx] ?? 0;
     const g = imageData.data[idx + 1] ?? 0;
     const b = imageData.data[idx + 2] ?? 0;
-    floatData[i] = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const gray = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    floatData[i] = (gray - 0.5) / 0.5;
   }
 
   return new ort.Tensor('float32', floatData, [1, 1, H, targetW]);

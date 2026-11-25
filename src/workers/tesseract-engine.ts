@@ -34,81 +34,78 @@ function detectScript(text: string): OcrScript {
 }
 
 /**
- * Preprocess ImageData for Tesseract:
- * - Adaptive local thresholding via integral image (removes shadows / uneven lighting)
- * - Upscales small crops so line height >= minHeight
+ * Preprocess ImageData for Tesseract without destructive thresholding:
+ * - Converts to clean grayscale with gentle auto-contrast stretch (preserves anti-aliased ink for LSTM)
+ * - Upscales small crops so line height >= minHeight, caps max dimension at 2000px
  * - Adds 16px white padding around edges (prevents edge-clipping in LSTM)
+ * - Returns { blob, scale, pad } so bounding boxes map back 1:1 to original ImageData
  */
-async function preprocessToPngBlob(crop: ImageData, minHeight = 96): Promise<Blob> {
+async function preprocessToPngBlob(
+  crop: ImageData,
+  minHeight = 96,
+): Promise<{ blob: Blob; scale: number; pad: number }> {
   const srcW = Math.max(1, crop.width);
   const srcH = Math.max(1, crop.height);
 
-  // Scale up small crops (up to 3x, capping width at 1800px)
   let scale = srcH < minHeight ? Math.min(3, minHeight / srcH) : 1;
-  if (srcW * scale > 1800) scale = 1800 / srcW;
+  const maxDim = 2000;
+  if (srcW * scale > maxDim) scale = maxDim / srcW;
+  if (srcH * scale > maxDim) scale = Math.min(scale, maxDim / srcH);
   const targetW = Math.max(1, Math.round(srcW * scale));
   const targetH = Math.max(1, Math.round(srcH * scale));
   const pad = 16;
 
-  // Compute grayscale + O(W*H) integral image for shadow-resistant local thresholding
+  // Convert to grayscale and find 2nd/98th percentile for gentle contrast stretch
+  const total = srcW * srcH;
+  const gray = new Uint8Array(total);
+  const hist = new Uint32Array(256);
+
+  for (let i = 0; i < total; i++) {
+    const idx = i * 4;
+    const g = Math.round(
+      0.299 * (crop.data[idx] ?? 255) +
+      0.587 * (crop.data[idx + 1] ?? 255) +
+      0.114 * (crop.data[idx + 2] ?? 255),
+    );
+    gray[i] = g;
+    hist[g] = (hist[g] ?? 0) + 1;
+  }
+
+  let low = 0;
+  let high = 255;
+  let acc = 0;
+  const lowTarget = total * 0.01;
+  const highTarget = total * 0.99;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v] ?? 0;
+    if (acc >= lowTarget) { low = v; break; }
+  }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) {
+    acc += hist[v] ?? 0;
+    if (total - acc <= highTarget) { high = v; break; }
+  }
+
+  const range = high - low;
+  const outImg = new ImageData(srcW, srcH);
+  const stretch = range > 20 && range < 220;
+
+  for (let i = 0; i < total; i++) {
+    const g = gray[i] ?? 255;
+    const val = stretch
+      ? Math.max(0, Math.min(255, Math.round(((g - low) * 255) / range)))
+      : g;
+    const idx = i * 4;
+    outImg.data[idx] = val;
+    outImg.data[idx + 1] = val;
+    outImg.data[idx + 2] = val;
+    outImg.data[idx + 3] = 255;
+  }
+
   const srcCanvas = document.createElement('canvas');
   srcCanvas.width = srcW;
   srcCanvas.height = srcH;
-  const sctx = srcCanvas.getContext('2d')!;
-  const outImg = new ImageData(new Uint8ClampedArray(crop.data), srcW, srcH);
-
-  const lum = new Float32Array(srcW * srcH);
-  const integral = new Float64Array((srcW + 1) * (srcH + 1));
-
-  for (let y = 0; y < srcH; y++) {
-    let rowSum = 0;
-    for (let x = 0; x < srcW; x++) {
-      const idx = (y * srcW + x) * 4;
-      const v =
-        0.299 * (crop.data[idx] ?? 0) +
-        0.587 * (crop.data[idx + 1] ?? 0) +
-        0.114 * (crop.data[idx + 2] ?? 0);
-      lum[y * srcW + x] = v;
-      rowSum += v;
-      integral[(y + 1) * (srcW + 1) + (x + 1)] =
-        integral[y * (srcW + 1) + (x + 1)]! + rowSum;
-    }
-  }
-
-  const radius = Math.max(10, Math.min(40, Math.round(Math.min(srcW, srcH) * 0.04)));
-  for (let y = 0; y < srcH; y++) {
-    const y0 = Math.max(0, y - radius);
-    const y1 = Math.min(srcH - 1, y + radius);
-    for (let x = 0; x < srcW; x++) {
-      const x0 = Math.max(0, x - radius);
-      const x1 = Math.min(srcW - 1, x + radius);
-      const count = (x1 - x0 + 1) * (y1 - y0 + 1);
-      const sum =
-        integral[(y1 + 1) * (srcW + 1) + (x1 + 1)]! -
-        integral[y0 * (srcW + 1) + (x1 + 1)]! -
-        integral[(y1 + 1) * (srcW + 1) + x0]! +
-        integral[y0 * (srcW + 1) + x0]!;
-      const localMean = sum / count;
-      const v = lum[y * srcW + x]!;
-
-      // Soft adaptive boost: ink significantly darker than local background -> crisp dark,
-      // background -> clean white, preserving anti-aliased edges for LSTM
-      const diff = localMean - v;
-      let val: number;
-      if (diff > 18) {
-        val = Math.max(0, Math.round(255 - diff * 3.2));
-      } else {
-        val = Math.min(255, Math.round(220 + (v - localMean) * 0.5));
-      }
-
-      const idx = (y * srcW + x) * 4;
-      outImg.data[idx] = val;
-      outImg.data[idx + 1] = val;
-      outImg.data[idx + 2] = val;
-      outImg.data[idx + 3] = 255;
-    }
-  }
-  sctx.putImageData(outImg, 0, 0);
+  srcCanvas.getContext('2d')!.putImageData(outImg, 0, 0);
 
   const outCanvas = document.createElement('canvas');
   outCanvas.width = targetW + pad * 2;
@@ -120,12 +117,14 @@ async function preprocessToPngBlob(crop: ImageData, minHeight = 96): Promise<Blo
   octx.imageSmoothingQuality = 'high';
   octx.drawImage(srcCanvas, 0, 0, srcW, srcH, pad, pad, targetW, targetH);
 
-  return new Promise<Blob>((resolve, reject) => {
-    outCanvas.toBlob((blob) => {
-      if (blob) resolve(blob);
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    outCanvas.toBlob((b) => {
+      if (b) resolve(b);
       else reject(new Error('Failed to encode crop image'));
     }, 'image/png');
   });
+
+  return { blob, scale, pad };
 }
 
 function recognizeCheckbox(crop: ImageData): OcrResult {
@@ -208,7 +207,7 @@ export async function recognizeWithTesseract(
     tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
   });
 
-  const blob = await preprocessToPngBlob(crop, 96);
+  const { blob } = await preprocessToPngBlob(crop, 96);
   const result = await sharedWorker.recognize(blob, {}, { text: true });
   let text = (result.data.text ?? '').replace(/\s+/g, ' ').trim();
 
@@ -237,9 +236,7 @@ export async function recognizeFullPageWithTesseract(
     tessedit_pageseg_mode: PSM.AUTO,
   });
 
-  const pad = 16;
-  const blob = await preprocessToPngBlob(imageData, 600);
-  const scale = imageData.height < 600 ? Math.min(3, 600 / Math.max(1, imageData.height)) : (imageData.width > 1800 ? 1800 / imageData.width : 1);
+  const { blob, scale, pad } = await preprocessToPngBlob(imageData, 600);
 
   const result = await sharedWorker.recognize(blob, {}, { text: true, blocks: true });
   const lines: OcrLine[] = [];
