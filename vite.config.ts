@@ -56,7 +56,7 @@ export default defineConfig({
               },
             },
             {
-              urlPattern: /\/ort\/.*\.wasm$/,
+              urlPattern: /\/ort\/.*\.(wasm|mjs|js)$/,
               handler: "CacheFirst",
               options: {
                 cacheName: "formlens-ort-wasm",
@@ -90,7 +90,7 @@ export default defineConfig({
     ],
     // Ensure WASM files from onnxruntime-web are served correctly
     optimizeDeps: {
-      exclude: ["onnxruntime-web"],
+      exclude: ["onnxruntime-web", "onnxruntime-web/wasm"],
     },
     // Worker files need to be treated as ES modules
     worker: {

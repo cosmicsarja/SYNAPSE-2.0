@@ -2,7 +2,7 @@
  * PaddleOcrEngine — fully offline Kannada + English PP-OCR recognition engine
  * implementing the existing OcrEngine interface plus batched full-page box recognition.
  */
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/wasm';
 import type { FieldType, OcrEngine, OcrResult, OcrScript } from '@/config/model';
 import {
   ORT_CONFIG,

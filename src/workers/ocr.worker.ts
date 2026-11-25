@@ -7,7 +7,7 @@
  * We configure it here at module load time so the detection + recognition sessions
  * share the same already-initialized WASM runtime.
  */
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/wasm';
 import { ORT_CONFIG } from '@/config/ocrModels';
 import { MockOcrEngine } from './mock-engine';
 import { OnnxOcrEngine } from './onnx-engine';

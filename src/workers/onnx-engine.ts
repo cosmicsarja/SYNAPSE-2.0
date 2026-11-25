@@ -14,7 +14,7 @@
  *   3. Adjust WIDTH_SCALE if model was trained with a different aspect ratio
  *   4. Adjust preprocessing if model was trained with mean/std normalization
  */
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/wasm';
 import { MODEL_CONFIG } from '@/config/model';
 import type { OcrEngine, OcrResult, FieldType } from '@/config/model';
 

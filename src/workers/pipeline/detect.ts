@@ -2,7 +2,7 @@
  * PP-OCRv4 DBNet text detection + pure-TS DB probability map post-processing,
  * oriented bounding boxes, reading-order sort, and perspective-warped cropping.
  */
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/wasm';
 import { DET_MODEL_CONFIG, ORT_CONFIG } from '@/config/ocrModels';
 
 export type Point2D = [number, number];
