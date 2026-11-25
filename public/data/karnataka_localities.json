@@ -6,7 +6,18 @@
       "taluks": [
         { "name": "Bengaluru North", "kannada": "ಬೆಂಗಳೂರು ಉತ್ತರ", "villages": ["Hebbal", "Yelahanka", "Jakkur", "Devanahalli"] },
         { "name": "Bengaluru South", "kannada": "ಬೆಂಗಳೂರು ದಕ್ಷಿಣ", "villages": ["Jayanagar", "JP Nagar", "Bannerghatta"] },
-        { "name": "Bengaluru East", "kannada": "ಬೆಂಗಳೂರು ಪೂರ್ವ", "villages": ["Whitefield", "Marathahalli", "KR Puram"] }
+        { "name": "Bengaluru East", "kannada": "ಬೆಂಗಳೂರು ಪೂರ್ವ", "villages": ["Whitefield", "Marathahalli", "KR Puram"] },
+        { "name": "Anekal", "kannada": "ಆನೇಕಲ್", "villages": ["Anekal", "Attibele", "Sarjapur"] }
+      ]
+    },
+    {
+      "name": "Bengaluru Rural",
+      "kannada": "ಬೆಂಗಳೂರು ಗ್ರಾಮಾಂತರ",
+      "taluks": [
+        { "name": "Devanahalli", "kannada": "ದೇವನಹಳ್ಳಿ", "villages": ["Devanahalli", "Vijayapura"] },
+        { "name": "Doddaballapura", "kannada": "ದೊಡ್ಡಬಳ್ಳಾಪುರ", "villages": ["Doddaballapura"] },
+        { "name": "Hoskote", "kannada": "ಹೊಸಕೋಟೆ", "villages": ["Hoskote", "Sulibele"] },
+        { "name": "Nelamangala", "kannada": "ನೆಲಮಂಗಲ", "villages": ["Nelamangala", "Dobbaspet"] }
       ]
     },
     {
@@ -14,7 +25,8 @@
       "kannada": "ಮೈಸೂರು",
       "taluks": [
         { "name": "Mysuru", "kannada": "ಮೈಸೂರು", "villages": ["Jayapura", "Nanjangud", "Hunsur"] },
-        { "name": "Nanjangud", "kannada": "ನಂಜನಗೂಡು", "villages": ["Nanjangud Town", "Heggadadevanakote"] }
+        { "name": "Nanjangud", "kannada": "ನಂಜನಗೂಡು", "villages": ["Nanjangud Town", "Heggadadevanakote"] },
+        { "name": "Hunsur", "kannada": "ಹುಣಸೂರು", "villages": ["Hunsur", "Bilikere"] }
       ]
     },
     {
@@ -22,7 +34,8 @@
       "kannada": "ಧಾರವಾಡ",
       "taluks": [
         { "name": "Dharwad", "kannada": "ಧಾರವಾಡ", "villages": ["Hubli", "Dharwad", "Alnavar"] },
-        { "name": "Hubli", "kannada": "ಹುಬ್ಬಳ್ಳಿ", "villages": ["Hubli City", "Tarihal", "Gabbur"] }
+        { "name": "Hubli", "kannada": "ಹುಬ್ಬಳ್ಳಿ", "villages": ["Hubli City", "Tarihal", "Gabbur"] },
+        { "name": "Kalghatgi", "kannada": "ಕಲಘಟಗಿ", "villages": ["Kalghatgi"] }
       ]
     },
     {
@@ -30,7 +43,8 @@
       "kannada": "ಬೆಳಗಾವಿ",
       "taluks": [
         { "name": "Belagavi", "kannada": "ಬೆಳಗಾವಿ", "villages": ["Belagavi City", "Hukeri", "Raibag"] },
-        { "name": "Chikkodi", "kannada": "ಚಿಕ್ಕೋಡಿ", "villages": ["Chikkodi", "Nippani", "Athani"] }
+        { "name": "Chikkodi", "kannada": "ಚಿಕ್ಕೋಡಿ", "villages": ["Chikkodi", "Nippani", "Athani"] },
+        { "name": "Gokak", "kannada": "ಗೋಕಾಕ್", "villages": ["Gokak", "Mudalagi"] }
       ]
     },
     {
@@ -38,14 +52,16 @@
       "kannada": "ತುಮಕೂರು",
       "taluks": [
         { "name": "Tumakuru", "kannada": "ತುಮಕೂರು", "villages": ["Tumakuru City", "Tiptur", "Madhugiri"] },
-        { "name": "Chikkanayakanahalli", "kannada": "ಚಿಕ್ಕನಾಯಕನಹಳ್ಳಿ", "villages": ["Chikkanayakanahalli", "Koratagere"] }
+        { "name": "Chikkanayakanahalli", "kannada": "ಚಿಕ್ಕನಾಯಕನಹಳ್ಳಿ", "villages": ["Chikkanayakanahalli", "Koratagere"] },
+        { "name": "Sira", "kannada": "ಸಿರಾ", "villages": ["Sira", "Pavagada"] }
       ]
     },
     {
       "name": "Shivamogga",
       "kannada": "ಶಿವಮೊಗ್ಗ",
       "taluks": [
-        { "name": "Shivamogga", "kannada": "ಶಿವಮೊಗ್ಗ", "villages": ["Shivamogga City", "Bhadravati", "Sagar"] }
+        { "name": "Shivamogga", "kannada": "ಶಿವಮೊಗ್ಗ", "villages": ["Shivamogga City", "Bhadravati", "Sagar"] },
+        { "name": "Sagara", "kannada": "ಸಾಗರ", "villages": ["Sagar", "Shikaripura"] }
       ]
     },
     {
@@ -53,9 +69,175 @@
       "kannada": "ದಕ್ಷಿಣ ಕನ್ನಡ",
       "taluks": [
         { "name": "Mangaluru", "kannada": "ಮಂಗಳೂರು", "villages": ["Mangaluru City", "Surathkal", "Mulki"] },
-        { "name": "Bantwal", "kannada": "ಬಂಟ್ವಾಳ", "villages": ["Bantwal", "Vitla", "Sullia"] }
+        { "name": "Bantwal", "kannada": "ಬಂಟ್ವಾಳ", "villages": ["Bantwal", "Vitla", "Sullia"] },
+        { "name": "Puttur", "kannada": "ಪುತ್ತೂರು", "villages": ["Puttur", "Belthangady"] }
+      ]
+    },
+    {
+      "name": "Udupi",
+      "kannada": "ಉಡುಪಿ",
+      "taluks": [
+        { "name": "Udupi", "kannada": "ಉಡುಪಿ", "villages": ["Manipal", "Kaup", "Brahmavar"] },
+        { "name": "Kundapura", "kannada": "ಕುಂದಾಪುರ", "villages": ["Kundapura", "Byndoor"] },
+        { "name": "Karkala", "kannada": "ಕಾರ್ಕಳ", "villages": ["Karkala", "Hebri"] }
+      ]
+    },
+    {
+      "name": "Uttara Kannada",
+      "kannada": "ಉತ್ತರ ಕನ್ನಡ",
+      "taluks": [
+        { "name": "Karwar", "kannada": "ಕಾರವಾರ", "villages": ["Karwar", "Ankola"] },
+        { "name": "Sirsi", "kannada": "ಶಿರಸಿ", "villages": ["Sirsi", "Siddapur", "Yellapur"] },
+        { "name": "Kumta", "kannada": "ಕುಮಟಾ", "villages": ["Kumta", "Honnavar", "Bhatkal"] }
+      ]
+    },
+    {
+      "name": "Bagalkote",
+      "kannada": "ಬಾಗಲಕೋಟೆ",
+      "taluks": [
+        { "name": "Bagalkote", "kannada": "ಬಾಗಲಕೋಟೆ", "villages": ["Bagalkote", "Badami"] },
+        { "name": "Jamkhandi", "kannada": "ಜಮಖಂಡಿ", "villages": ["Jamkhandi", "Mudhol"] }
+      ]
+    },
+    {
+      "name": "Ballari",
+      "kannada": "ಬಳ್ಳಾರಿ",
+      "taluks": [
+        { "name": "Ballari", "kannada": "ಬಳ್ಳಾರಿ", "villages": ["Ballari", "Siruguppa", "Sandur"] }
+      ]
+    },
+    {
+      "name": "Vijayanagara",
+      "kannada": "ವಿಜಯನಗರ",
+      "taluks": [
+        { "name": "Hosapete", "kannada": "ಹೊಸಪೇಟೆ", "villages": ["Hosapete", "Hampi", "Harapanahalli"] }
+      ]
+    },
+    {
+      "name": "Bidar",
+      "kannada": "ಬೀದರ್",
+      "taluks": [
+        { "name": "Bidar", "kannada": "ಬೀದರ್", "villages": ["Bidar", "Basavakalyan", "Bhalki"] }
+      ]
+    },
+    {
+      "name": "Chamarajanagara",
+      "kannada": "ಚಾಮರಾಜನಗರ",
+      "taluks": [
+        { "name": "Chamarajanagara", "kannada": "ಚಾಮರಾಜನಗರ", "villages": ["Chamarajanagara", "Kollegal", "Gundlupet"] }
+      ]
+    },
+    {
+      "name": "Chikkaballapura",
+      "kannada": "ಚಿಕ್ಕಬಳ್ಳಾಪುರ",
+      "taluks": [
+        { "name": "Chikkaballapura", "kannada": "ಚಿಕ್ಕಬಳ್ಳಾಪುರ", "villages": ["Chikkaballapura", "Chintamani", "Gauribidanur"] }
+      ]
+    },
+    {
+      "name": "Chikkamagaluru",
+      "kannada": "ಚಿಕ್ಕಮಗಳೂರು",
+      "taluks": [
+        { "name": "Chikkamagaluru", "kannada": "ಚಿಕ್ಕಮಗಳೂರು", "villages": ["Chikkamagaluru", "Kadur", "Mudigere"] }
+      ]
+    },
+    {
+      "name": "Chitradurga",
+      "kannada": "ಚಿತ್ರದುರ್ಗ",
+      "taluks": [
+        { "name": "Chitradurga", "kannada": "ಚಿತ್ರದುರ್ಗ", "villages": ["Chitradurga", "Hiriyur", "Challakere"] }
+      ]
+    },
+    {
+      "name": "Davanagere",
+      "kannada": "ದಾವಣಗೆರೆ",
+      "taluks": [
+        { "name": "Davanagere", "kannada": "ದಾವಣಗೆರೆ", "villages": ["Davanagere", "Harihara", "Channagiri"] }
+      ]
+    },
+    {
+      "name": "Gadag",
+      "kannada": "ಗದಗ",
+      "taluks": [
+        { "name": "Gadag", "kannada": "ಗದಗ", "villages": ["Gadag", "Ron", "Mundargi"] }
+      ]
+    },
+    {
+      "name": "Hassan",
+      "kannada": "ಹಾಸನ",
+      "taluks": [
+        { "name": "Hassan", "kannada": "ಹಾಸನ", "villages": ["Hassan", "Arsikere", "Channarayapatna", "Sakleshpur"] }
+      ]
+    },
+    {
+      "name": "Haveri",
+      "kannada": "ಹಾವೇರಿ",
+      "taluks": [
+        { "name": "Haveri", "kannada": "ಹಾವೇರಿ", "villages": ["Haveri", "Ranebennur", "Byadgi"] }
+      ]
+    },
+    {
+      "name": "Kalaburagi",
+      "kannada": "ಕಲಬುರಗಿ",
+      "taluks": [
+        { "name": "Kalaburagi", "kannada": "ಕಲಬುರಗಿ", "villages": ["Kalaburagi", "Aland", "Chittapur", "Sedam"] }
+      ]
+    },
+    {
+      "name": "Kodagu",
+      "kannada": "ಕೊಡಗು",
+      "taluks": [
+        { "name": "Madikeri", "kannada": "ಮಡಿಕೇರಿ", "villages": ["Madikeri", "Virajpet", "Somwarpet"] }
+      ]
+    },
+    {
+      "name": "Kolar",
+      "kannada": "ಕೋಲಾರ",
+      "taluks": [
+        { "name": "Kolar", "kannada": "ಕೋಲಾರ", "villages": ["Kolar", "Bangarapet", "Malur", "Mulbagal"] }
+      ]
+    },
+    {
+      "name": "Koppal",
+      "kannada": "ಕೊಪ್ಪಳ",
+      "taluks": [
+        { "name": "Koppal", "kannada": "ಕೊಪ್ಪಳ", "villages": ["Koppal", "Gangavathi", "Kushtagi"] }
+      ]
+    },
+    {
+      "name": "Mandya",
+      "kannada": "ಮಂಡ್ಯ",
+      "taluks": [
+        { "name": "Mandya", "kannada": "ಮಂಡ್ಯ", "villages": ["Mandya", "Maddur", "Malavalli", "Srirangapatna"] }
+      ]
+    },
+    {
+      "name": "Raichur",
+      "kannada": "ರಾಯಚೂರು",
+      "taluks": [
+        { "name": "Raichur", "kannada": "ರಾಯಚೂರು", "villages": ["Raichur", "Sindhanur", "Manvi"] }
+      ]
+    },
+    {
+      "name": "Ramanagara",
+      "kannada": "ರಾಮನಗರ",
+      "taluks": [
+        { "name": "Ramanagara", "kannada": "ರಾಮನಗರ", "villages": ["Ramanagara", "Channapatna", "Kanakapura", "Magadi"] }
+      ]
+    },
+    {
+      "name": "Vijayapura",
+      "kannada": "ವಿಜಯಪುರ",
+      "taluks": [
+        { "name": "Vijayapura", "kannada": "ವಿಜಯಪುರ", "villages": ["Vijayapura", "Indi", "Basavana Bagewadi"] }
+      ]
+    },
+    {
+      "name": "Yadgir",
+      "kannada": "ಯಾದಗಿರಿ",
+      "taluks": [
+        { "name": "Yadgir", "kannada": "ಯಾದಗಿರಿ", "villages": ["Yadgir", "Shahapur", "Shorapur"] }
       ]
     }
   ]
 }
-

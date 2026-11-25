@@ -3,6 +3,7 @@
  * fuzzy label/value pairing for Kannada + English forms.
  */
 import type { BBox } from '@/workers/pipeline/detect';
+import { snapKannadaFormTerm } from '@/lib/formlens/kannadaNormalize';
 
 export interface TemplateFieldDef {
   id: string;
@@ -153,7 +154,8 @@ export function assignBoxesToTemplateFields(
 }
 
 function normalizeLabel(s: string): string {
-  return s.toLowerCase().replace(/[:\-_./,()]/g, ' ').replace(/\s+/g, ' ').trim();
+  const snapped = snapKannadaFormTerm(s);
+  return snapped.toLowerCase().replace(/[:\-_./,()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function similarity(a: string, b: string): number {

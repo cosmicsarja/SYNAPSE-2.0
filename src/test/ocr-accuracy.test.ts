@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeKannadaText } from '@/lib/formlens/kannadaNormalize';
+import { normalizeKannadaText, snapKannadaFormTerm } from '@/lib/formlens/kannadaNormalize';
+import { createLocalityMatcher, type LocalityData } from '@/lib/formlens/fuzzySnap';
+import localitiesJson from '../../public/data/karnataka_localities.json';
 import {
   enhanceCropForRecognition,
   selectBestScriptPrediction,
@@ -103,5 +105,32 @@ describe('Padded quad cropping', () => {
     expect(res.rotated90).toBe(false);
     expect(res.crop.width).toBeGreaterThan(70);
     expect(res.crop.height).toBeGreaterThan(16);
+  });
+});
+
+describe('Kannada form lexicon & Karnataka locality fuzzy matching', () => {
+  it('snaps noisy Kannada form labels without altering unrelated names', () => {
+    expect(snapKannadaFormTerm('ಹೆಸರ:')).toBe('ಹೆಸರು');
+    expect(snapKannadaFormTerm('ವಿಳಸ')).toBe('ವಿಳಾಸ');
+    expect(snapKannadaFormTerm('ಕರ್ನಾಟಕ್')).toBe('ಕರ್ನಾಟಕ');
+    expect(snapKannadaFormTerm('ರಮೇಶ್')).toBe('ರಮೇಶ್');
+  });
+
+  it('matches all 31 Karnataka districts in both Kannada and English', () => {
+    const data = localitiesJson as LocalityData;
+    expect(data.districts.length).toBe(31);
+    const match = createLocalityMatcher(data);
+
+    const knMatch = match('ಬೆಂಗಲೂರು ನಗರ');
+    expect(knMatch).not.toBeNull();
+    expect(knMatch!.value).toBe('ಬೆಂಗಳೂರು ನಗರ');
+    expect(knMatch!.englishName).toBe('Bengaluru Urban');
+
+    const enMatch = match('Shivamoga');
+    expect(enMatch).not.toBeNull();
+    expect(enMatch!.value).toBe('Shivamogga');
+    expect(enMatch!.kannadaName).toBe('ಶಿವಮೊಗ್ಗ');
+
+    expect(match('xyzzy12345')).toBeNull();
   });
 });

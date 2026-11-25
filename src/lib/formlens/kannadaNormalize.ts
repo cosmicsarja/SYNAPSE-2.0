@@ -70,3 +70,87 @@ export function normalizeKannadaText(raw: string): string {
 export function normalizeKannadaBatch(texts: string[]): string[] {
   return texts.map(normalizeKannadaText);
 }
+
+/**
+ * Common Karnataka government/application form terms in Kannada.
+ * Used for conservative fuzzy correction of printed labels and standard values.
+ */
+export const KANNADA_FORM_LEXICON: readonly string[] = [
+  'ಹೆಸರು',
+  'ತಂದೆಯ ಹೆಸರು',
+  'ತಾಯಿಯ ಹೆಸರು',
+  'ಗಂಡನ ಹೆಸರು',
+  'ಅರ್ಜಿದಾರರ ಹೆಸರು',
+  'ವಿಳಾಸ',
+  'ಜಿಲ್ಲೆ',
+  'ತಾಲೂಕು',
+  'ಗ್ರಾಮ',
+  'ಹೋಬಳಿ',
+  'ರಾಜ್ಯ',
+  'ಕರ್ನಾಟಕ',
+  'ಪಿನ್ ಕೋಡ್',
+  'ದೂರವಾಣಿ',
+  'ಮೊಬೈಲ್',
+  'ಜನ್ಮ ದಿನಾಂಕ',
+  'ದಿನಾಂಕ',
+  'ವಯಸ್ಸು',
+  'ಲಿಂಗ',
+  'ಪುರುಷ',
+  'ಮಹಿಳೆ',
+  'ಆದಾಯ',
+  'ವಾರ್ಷಿಕ ಆದಾಯ',
+  'ಪಡಿತರ ಚೀಟಿ',
+  'ಜಾತಿ',
+  'ಧರ್ಮ',
+  'ಉದ್ಯೋಗ',
+  'ವಿದ್ಯಾರ್ಹತೆ',
+  'ಕುಟುಂಬದ ಮುಖ್ಯಸ್ಥರು',
+  'ಸಂಬಂಧ',
+  'ಬ್ಯಾಂಕ್',
+  'ಖಾತೆ ಸಂಖ್ಯೆ',
+  'ಆಧಾರ್ ಸಂಖ್ಯೆ',
+  'ಸಹಿ',
+  'ಸ್ಥಳ',
+];
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[] = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0]!;
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = dp[j]!;
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[j] = Math.min(dp[j]! + 1, dp[j - 1]! + 1, prev + cost);
+      prev = tmp;
+    }
+  }
+  return dp[n]!;
+}
+
+/**
+ * Conservatively snaps a noisy Kannada form label/term to a known lexicon entry
+ * when normalized edit distance <= maxEditRatio (default 0.25, max 2 edits).
+ * Leaves unrelated words and person names untouched.
+ */
+export function snapKannadaFormTerm(raw: string, maxEditRatio = 0.25): string {
+  const cleaned = normalizeKannadaText(raw).replace(/[:：]/g, '').trim();
+  if (!cleaned || cleaned.length < 3 || !hasKannada(cleaned)) return raw;
+
+  let bestMatch: string | null = null;
+  let bestDist = Infinity;
+
+  for (const term of KANNADA_FORM_LEXICON) {
+    const maxLen = Math.max(cleaned.length, term.length);
+    if (Math.abs(cleaned.length - term.length) > 2) continue;
+    const dist = levenshtein(cleaned, term);
+    if (dist <= 2 && dist / maxLen <= maxEditRatio && dist < bestDist) {
+      bestDist = dist;
+      bestMatch = term;
+    }
+  }
+
+  return bestMatch ?? raw;
+}

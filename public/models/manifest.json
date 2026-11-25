@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "generatedAt": "2026-11-25T17:31:17.998Z",
+  "generatedAt": "2026-11-25T17:46:24.851Z",
   "files": [
     {
       "name": "ppocrv4_det.v1.onnx",
@@ -45,8 +45,8 @@
     {
       "name": "karnataka_localities.json",
       "url": "/data/karnataka_localities.json",
-      "size": 2603,
-      "sha256": "f1c704543586801ab0bf90baabbcb68d6cfb0c17a3ccbb6899e70b43eb6cd607",
+      "size": 9651,
+      "sha256": "e869c481114113d1e5e976e278e374dc5c5c5287ecec3a2ec186e7282ee620ed",
       "version": "local-1",
       "description": "Karnataka district/taluk/village dictionary"
     },
