@@ -1,42 +1,62 @@
 /**
  * Editable JSON <-> Kannada/English PDF converter.
- * Renders via high-DPI HTML Canvas into A4 jsPDF pages so Kannada Unicode
- * glyphs, vowel signs, and ottaksharas shape accurately 100% offline.
+ * Supports:
+ * - Layout-preserving PDF ("like the image"): places edited JSON text at exact normBbox
+ *   coordinates on a clean white page (or over the original photo), matching the image aspect ratio.
+ * - Table PDF: structured Field / Value / Confidence table.
+ * Renders via HTML Canvas into jsPDF so Kannada Unicode glyphs shape accurately 100% offline.
  */
 import { jsPDF } from 'jspdf';
 import type { FormField, SavedForm } from '@/db/schema';
+
+export type PdfRenderMode = 'layout' | 'overlay' | 'table';
 
 export interface EditableJsonField {
   key: string;
   label: string;
   value: string;
   confidence?: number;
+  normBbox?: [number, number, number, number] | null;
 }
 
 export interface EditableFormJson {
   title: string;
   template: string;
   date: string;
+  imageWidth?: number;
+  imageHeight?: number;
   fields: EditableJsonField[];
   notes?: string;
 }
 
 /**
- * Converts a scanned form and its fields into a clean editable JSON structure.
+ * Converts a scanned form and its fields into a clean editable JSON structure
+ * preserving normalized bounding boxes for layout-exact PDF generation.
  */
 export function formToEditableJson(form: SavedForm, fields: FormField[]): EditableFormJson {
   return {
     title: `FormLens Extract #${form.id ?? 'new'}`,
     template: form.templateName || 'Auto Extract',
     date: new Date(form.createdAt).toLocaleDateString('en-IN'),
+    ...(form.imageWidth && form.imageHeight
+      ? { imageWidth: form.imageWidth, imageHeight: form.imageHeight }
+      : {}),
     fields: fields.map((f, idx) => ({
       key: f.fieldId || `field_${idx + 1}`,
       label: f.labelKn && f.labelKn !== f.labelEn ? `${f.labelEn} / ${f.labelKn}` : f.labelEn,
       value: f.textValue ?? '',
       confidence: Math.round((f.confidence ?? 0) * 100),
+      ...(f.normBbox ? { normBbox: f.normBbox } : {}),
     })),
     notes: '',
   };
+}
+
+function parseNormBbox(raw: unknown): [number, number, number, number] | null {
+  if (!Array.isArray(raw) || raw.length !== 4) return null;
+  const nums = raw.map(Number);
+  if (nums.some((n) => !Number.isFinite(n))) return null;
+  return [nums[0]!, nums[1]!, nums[2]!, nums[3]!];
 }
 
 /**
@@ -69,7 +89,14 @@ export function parseEditableJson(
       const label = typeof f.label === 'string' && f.label.trim() ? f.label.trim() : key;
       const value = f.value === undefined || f.value === null ? '' : String(f.value);
       const confidence = typeof f.confidence === 'number' ? f.confidence : undefined;
-      return confidence !== undefined ? { key, label, value, confidence } : { key, label, value };
+      const normBbox = parseNormBbox(f.normBbox);
+      return {
+        key,
+        label,
+        value,
+        ...(confidence !== undefined ? { confidence } : {}),
+        ...(normBbox ? { normBbox } : {}),
+      };
     });
 
     return {
@@ -78,6 +105,9 @@ export function parseEditableJson(
         title: typeof obj.title === 'string' && obj.title.trim() ? obj.title : 'FormLens Document',
         template: typeof obj.template === 'string' ? obj.template : 'Custom JSON',
         date: typeof obj.date === 'string' ? obj.date : new Date().toLocaleDateString('en-IN'),
+        ...(typeof obj.imageWidth === 'number' && typeof obj.imageHeight === 'number'
+          ? { imageWidth: obj.imageWidth, imageHeight: obj.imageHeight }
+          : {}),
         fields,
         notes: typeof obj.notes === 'string' ? obj.notes : undefined,
       },
@@ -86,7 +116,13 @@ export function parseEditableJson(
 
   // Flat key-value JSON object support: { "ಹೆಸರು": "ರಮೇಶ್", "Mobile": "9876543210" }
   const flatEntries = Object.entries(obj).filter(
-    ([k]) => k !== 'title' && k !== 'template' && k !== 'date' && k !== 'notes',
+    ([k]) =>
+      k !== 'title' &&
+      k !== 'template' &&
+      k !== 'date' &&
+      k !== 'notes' &&
+      k !== 'imageWidth' &&
+      k !== 'imageHeight',
   );
   if (flatEntries.length === 0) {
     return { ok: false, error: 'JSON must include a "fields" array or key-value pairs' };
@@ -108,9 +144,11 @@ export function parseEditableJson(
   };
 }
 
+const FONT_FAMILY = '"Noto Sans Kannada", "Tunga", "Nudi", system-ui, -apple-system, sans-serif';
+
 /** Word/character-aware wrapping for Kannada + English text on Canvas. */
 function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  if (!text) return ['—'];
+  if (!text) return [''];
   const paragraphs = text.split('\n');
   const lines: string[] = [];
 
@@ -127,7 +165,6 @@ function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: n
         current = test;
       } else {
         if (current.trim()) lines.push(current.trimEnd());
-        // If a single long token exceeds maxWidth, break by character
         if (ctx.measureText(part.trimStart()).width > maxWidth) {
           let chunk = '';
           for (const ch of part.trimStart()) {
@@ -152,13 +189,109 @@ function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: n
 }
 
 /**
- * Renders EditableFormJson onto A4-proportioned HTML Canvas pages (1240x1754, ~150 DPI)
- * and saves a multi-page PDF with crisp native Kannada & English typography.
+ * Renders EditableFormJson in the exact spatial layout of the scanned image
+ * (either on a clean white page or overlaid on the original photo with whiteout boxes).
  */
-export function exportJsonToPdf(
+async function renderLayoutPdf(
   data: EditableFormJson,
-  filename = `formlens-document.pdf`,
-): void {
+  filename: string,
+  backgroundImageUrl?: string,
+): Promise<void> {
+  const aspect =
+    data.imageWidth && data.imageHeight && data.imageHeight > 0
+      ? data.imageWidth / data.imageHeight
+      : 210 / 297;
+
+  const PAGE_W = 1240;
+  const PAGE_H = Math.max(600, Math.min(2600, Math.round(PAGE_W / aspect)));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = PAGE_W;
+  canvas.height = PAGE_H;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+
+  if (backgroundImageUrl) {
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Failed to load background image'));
+      img.src = backgroundImageUrl;
+    });
+    ctx.drawImage(img, 0, 0, PAGE_W, PAGE_H);
+  }
+
+  for (const field of data.fields) {
+    if (!field.normBbox) continue;
+    const [nx0, ny0, nx1, ny1] = field.normBbox;
+    const x = nx0 * PAGE_W;
+    const y = ny0 * PAGE_H;
+    const w = Math.max(20, (nx1 - nx0) * PAGE_W);
+    const h = Math.max(14, (ny1 - ny0) * PAGE_H);
+
+    if (backgroundImageUrl) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
+      ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    }
+
+    const text = (field.value ?? '').trim();
+    if (!text) continue;
+
+    // Auto-fit font size to box height, shrinking if needed so text fits inside box width
+    let fontSize = Math.max(12, Math.min(54, Math.round(h * 0.72)));
+    let lines: string[] = [text];
+    while (fontSize > 11) {
+      ctx.font = `500 ${fontSize}px ${FONT_FAMILY}`;
+      lines = wrapCanvasText(ctx, text, Math.max(24, w));
+      const totalTextH = lines.length * fontSize * 1.18;
+      if (totalTextH <= h * 1.15) break;
+      fontSize -= 2;
+    }
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `500 ${fontSize}px ${FONT_FAMILY}`;
+    ctx.textBaseline = 'top';
+    const lineH = fontSize * 1.18;
+    lines.forEach((line, i) => {
+      ctx.fillText(line, x + 2, y + 2 + i * lineH, w);
+    });
+  }
+
+  const pageWmm = 210;
+  const pageHmm = Math.round((pageWmm / PAGE_W) * PAGE_H * 10) / 10;
+  const doc = new jsPDF({
+    orientation: PAGE_W > PAGE_H ? 'landscape' : 'portrait',
+    unit: 'mm',
+    format: [pageWmm, pageHmm],
+  });
+  const imgData = canvas.toDataURL('image/jpeg', 0.94);
+  doc.addImage(imgData, 'JPEG', 0, 0, pageWmm, pageHmm);
+  doc.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
+}
+
+/**
+ * Renders EditableFormJson onto A4-proportioned HTML Canvas pages (1240x1754, ~150 DPI)
+ * and saves a multi-page PDF. Defaults to layout-matching mode if normBbox coordinates exist.
+ */
+export async function exportJsonToPdf(
+  data: EditableFormJson,
+  filename = 'formlens-document.pdf',
+  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string },
+): Promise<void> {
+  const hasBoxes = data.fields.some((f) => Boolean(f.normBbox));
+  const mode: PdfRenderMode = options?.mode ?? (hasBoxes ? 'layout' : 'table');
+
+  if ((mode === 'layout' || mode === 'overlay') && hasBoxes) {
+    await renderLayoutPdf(
+      data,
+      filename,
+      mode === 'overlay' ? options?.backgroundImageUrl : undefined,
+    );
+    return;
+  }
+
   const PAGE_W = 1240;
   const PAGE_H = 1754;
   const MARGIN = 80;
@@ -166,7 +299,6 @@ export function exportJsonToPdf(
   const COL_LABEL_W = 360;
   const COL_VAL_W = CONTENT_W - COL_LABEL_W - 110;
   const COL_CONF_X = MARGIN + COL_LABEL_W + COL_VAL_W + 20;
-  const FONT_FAMILY = '"Noto Sans Kannada", "Tunga", "Nudi", system-ui, -apple-system, sans-serif';
 
   const pages: HTMLCanvasElement[] = [];
 
@@ -180,17 +312,14 @@ export function exportJsonToPdf(
     ctx.fillRect(0, 0, PAGE_W, PAGE_H);
 
     if (pageNum === 1) {
-      // Title
       ctx.fillStyle = '#0f172a';
       ctx.font = `700 38px ${FONT_FAMILY}`;
       ctx.fillText(data.title || 'FormLens Document', MARGIN, MARGIN + 34);
 
-      // Metadata line
       ctx.fillStyle = '#475569';
       ctx.font = `400 22px ${FONT_FAMILY}`;
       ctx.fillText(`Template: ${data.template}   •   Date: ${data.date}`, MARGIN, MARGIN + 74);
 
-      // Divider
       ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -246,26 +375,22 @@ export function exportJsonToPdf(
       y = drawTableHeader(ctx, next.y);
     }
 
-    // Row border
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1;
     ctx.strokeRect(MARGIN, y, CONTENT_W, rowH);
 
-    // Label column
     ctx.fillStyle = '#1e293b';
     ctx.font = `600 22px ${FONT_FAMILY}`;
     labelLines.forEach((line, i) => {
       ctx.fillText(line, MARGIN + 16, y + PAD_Y + 24 + i * LINE_H);
     });
 
-    // Value column
     ctx.fillStyle = '#0f172a';
     ctx.font = `400 22px ${FONT_FAMILY}`;
     valueLines.forEach((line, i) => {
       ctx.fillText(line, MARGIN + COL_LABEL_W + 16, y + PAD_Y + 24 + i * LINE_H);
     });
 
-    // Confidence column
     if (field.confidence !== undefined) {
       ctx.fillStyle = field.confidence >= 85 ? '#15803d' : field.confidence >= 60 ? '#b45309' : '#b91c1c';
       ctx.font = `600 20px ${FONT_FAMILY}`;

@@ -1,6 +1,6 @@
 /**
  * JsonToPdfDialog — lets users inspect/edit extracted OCR text in JSON format
- * and convert that edited JSON directly into a formatted Kannada + English PDF.
+ * and convert that edited JSON directly into a layout-matching Kannada + English PDF.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
   exportJsonToPdf,
   formToEditableJson,
   parseEditableJson,
+  type PdfRenderMode,
 } from '@/lib/formlens/jsonPdf';
 
 interface Props {
@@ -42,6 +43,10 @@ export function JsonToPdfDialog({
 
   const [rawJson, setRawJson] = useState(initialJson);
   const [applied, setApplied] = useState(false);
+  const [pdfMode, setPdfMode] = useState<PdfRenderMode>('layout');
+  const [generating, setGenerating] = useState(false);
+
+  const hasPhoto = Boolean(form.imageDataUrl ?? form.thumbnailDataUrl);
 
   useEffect(() => {
     if (open) {
@@ -51,6 +56,7 @@ export function JsonToPdfDialog({
   }, [open, initialJson]);
 
   const parsed = useMemo(() => parseEditableJson(rawJson), [rawJson]);
+  const hasBoxes = parsed.ok && parsed.data.fields.some((f) => Boolean(f.normBbox));
 
   const handleFormat = () => {
     if (!parsed.ok) return;
@@ -62,9 +68,17 @@ export function JsonToPdfDialog({
     setApplied(false);
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (!parsed.ok) return;
-    exportJsonToPdf(parsed.data, `formlens-${form.id ?? 'form'}.pdf`);
+    setGenerating(true);
+    try {
+      await exportJsonToPdf(parsed.data, `formlens-${form.id ?? 'form'}.pdf`, {
+        mode: hasBoxes ? pdfMode : 'table',
+        backgroundImageUrl: form.imageDataUrl ?? form.thumbnailDataUrl,
+      });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleDownloadJson = () => {
@@ -89,9 +103,45 @@ export function JsonToPdfDialog({
             Editable JSON → PDF
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Edit the extracted text in JSON format (or paste any key-value JSON), then convert it directly into a printable Kannada + English PDF.
+            Edit the extracted text in JSON format, then convert it into a PDF matching the original image layout (or as a table).
           </DialogDescription>
         </DialogHeader>
+
+        {/* PDF layout mode selector */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground mr-1">PDF Style:</span>
+          <Button
+            type="button"
+            variant={pdfMode === 'layout' ? 'default' : 'outline'}
+            size="sm"
+            className="h-7 text-xs"
+            disabled={!hasBoxes}
+            onClick={() => setPdfMode('layout')}
+          >
+            Match Image Layout
+          </Button>
+          {hasPhoto && (
+            <Button
+              type="button"
+              variant={pdfMode === 'overlay' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 text-xs"
+              disabled={!hasBoxes}
+              onClick={() => setPdfMode('overlay')}
+            >
+              Over Original Photo
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant={pdfMode === 'table' || !hasBoxes ? 'default' : 'outline'}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setPdfMode('table')}
+          >
+            Table
+          </Button>
+        </div>
 
         {/* Validation status + toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -140,7 +190,7 @@ export function JsonToPdfDialog({
           onChange={(e) => setRawJson(e.target.value)}
           spellCheck={false}
           aria-label="Editable JSON"
-          className="w-full min-h-[300px] flex-1 rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full min-h-[280px] flex-1 rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary"
         />
 
         {/* Actions */}
@@ -171,11 +221,11 @@ export function JsonToPdfDialog({
           <Button
             type="button"
             size="sm"
-            disabled={!parsed.ok}
-            onClick={handleDownloadPdf}
+            disabled={!parsed.ok || generating}
+            onClick={() => void handleDownloadPdf()}
           >
             <FileText className="h-4 w-4 mr-1.5" />
-            Convert JSON → PDF
+            {generating ? 'Generating PDF…' : 'Convert JSON → PDF'}
           </Button>
         </div>
       </DialogContent>

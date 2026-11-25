@@ -91,7 +91,7 @@ export function exportCsv(form: SavedForm, fields: FormField[]): void {
 
 export function exportPdf(form: SavedForm, fields: FormField[]): void {
   const editable = formToEditableJson(form, fields);
-  exportJsonToPdf(editable, `formlens-${form.id ?? 'form'}.pdf`);
+  void exportJsonToPdf(editable, `formlens-${form.id ?? 'form'}.pdf`);
 }
 
 function downloadBlob(blob: Blob, filename: string): void {

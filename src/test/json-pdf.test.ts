@@ -8,6 +8,8 @@ describe('Editable JSON <-> PDF conversion helpers', () => {
       id: 42,
       templateId: 'ration-card',
       templateName: 'Ration Card',
+      imageWidth: 1000,
+      imageHeight: 1400,
       createdAt: 1732500000000,
       updatedAt: 1732500000000,
       status: 'pending',
@@ -24,6 +26,7 @@ describe('Editable JSON <-> PDF conversion helpers', () => {
         textValue: 'ರಮೇಶ್ ಕುಮಾರ್',
         originalText: 'ರಮೇಶ್ ಕುಮಾರ್',
         confidence: 0.93,
+        normBbox: [0.1, 0.2, 0.6, 0.25],
         wasEdited: false,
       },
       {
@@ -42,10 +45,20 @@ describe('Editable JSON <-> PDF conversion helpers', () => {
     const editable = formToEditableJson(form, fields);
     expect(editable.title).toBe('FormLens Extract #42');
     expect(editable.template).toBe('Ration Card');
+    expect(editable.imageWidth).toBe(1000);
+    expect(editable.imageHeight).toBe(1400);
     expect(editable.fields).toHaveLength(2);
     expect(editable.fields[0]!.label).toBe('Applicant Name / ಅರ್ಜಿದಾರರ ಹೆಸರು');
     expect(editable.fields[0]!.value).toBe('ರಮೇಶ್ ಕುಮಾರ್');
+    expect(editable.fields[0]!.normBbox).toEqual([0.1, 0.2, 0.6, 0.25]);
     expect(editable.fields[1]!.label).toBe('Mobile');
+
+    const reparsed = parseEditableJson(JSON.stringify(editable));
+    expect(reparsed.ok).toBe(true);
+    if (reparsed.ok) {
+      expect(reparsed.data.fields[0]!.normBbox).toEqual([0.1, 0.2, 0.6, 0.25]);
+      expect(reparsed.data.imageWidth).toBe(1000);
+    }
   });
 
   it('parses both structured EditableFormJson and flat key-value JSON', () => {
