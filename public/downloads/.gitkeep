@@ -1,0 +1,20 @@
+# APK Downloads
+
+APK releases are hosted on GitHub Releases, not in this repository.
+
+After building with Bubblewrap or PWABuilder (see `twa/README.md`), upload the signed APK:
+
+```bash
+gh release create v1.0.0 app-release-signed.apk \
+  --title "FormLens v1.0.0 Android APK"
+```
+
+Then update the download link in `src/routes/install.tsx`:
+- Search for `APK_DOWNLOAD_URL`
+- Replace the placeholder with your GitHub Releases asset URL
+
+## Why not in the repo?
+
+- Binary files bloat git history permanently
+- Signed APKs contain the app's digital signature — the keystore must stay secret
+- GitHub Releases provides versioning, download counts, and CDN delivery

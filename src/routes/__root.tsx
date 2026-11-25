@@ -77,24 +77,29 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
+      // viewport-fit=cover for iPhone notch / safe-area insets
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "FormLens" },
       { name: "description", content: "Offline-first PWA for scanning Kannada and English government forms with on-device AI." },
-      { name: "author", content: "FormLens" },
+      // PWA / install meta
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { name: "apple-mobile-web-app-title", content: "FormLens" },
       { name: "theme-color", content: "#1e3a5f" },
+      { name: "msapplication-TileColor", content: "#1e3a5f" },
+      // Open Graph
       { property: "og:title", content: "FormLens" },
       { property: "og:description", content: "Offline form scanner for Kannada and English government forms." },
       { property: "og:type", content: "website" },
+      { property: "og:image", content: "/icons/icon-512.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/icons/icon-192.png", type: "image/png" },
       { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/icons/icon-192.svg" },
+      // Apple touch icon MUST be a raster PNG at 180×180 for iOS to pick it up
+      { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -117,15 +122,15 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** Toast shown when a new SW version is available */
+/** "New version available" toast shown when SW finds an update */
 function UpdateToast({ onUpdate }: { onUpdate: () => void }) {
   return (
-    <div className="fixed bottom-20 left-4 right-4 z-50 rounded-xl border border-primary/30 bg-primary text-primary-foreground shadow-lg p-3 flex items-center justify-between gap-3">
-      <span className="text-sm">New version available</span>
-      <button
-        onClick={onUpdate}
-        className="shrink-0 text-sm font-semibold underline"
-      >
+    <div
+      role="alert"
+      className="fixed bottom-20 left-4 right-4 z-50 rounded-xl border border-primary/30 bg-primary text-primary-foreground shadow-lg p-3 flex items-center justify-between gap-3"
+    >
+      <span className="text-sm">New version available — tap to update</span>
+      <button onClick={onUpdate} className="shrink-0 text-sm font-semibold underline">
         Update
       </button>
     </div>
@@ -137,39 +142,59 @@ function RootComponent() {
   const [showUpdateToast, setShowUpdateToast] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
 
-  // Register service worker and listen for updates
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
-    // Don't register in Lovable preview iframes
+    // Don't register inside Lovable preview iframes — the cross-origin SW registration fails
     if (window.parent !== window) return;
 
-    navigator.serviceWorker.register("/sw.js").then((reg) => {
-      setRegistration(reg);
-      reg.addEventListener("updatefound", () => {
-        const newWorker = reg.installing;
-        newWorker?.addEventListener("statechange", () => {
-          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            setShowUpdateToast(true);
-          }
+    // Register service worker
+    navigator.serviceWorker
+      .register("/sw.js", { scope: "/" })
+      .then((reg) => {
+        setRegistration(reg);
+        // Listen for a waiting worker (new version installed)
+        const checkWaiting = () => {
+          if (reg.waiting) setShowUpdateToast(true);
+        };
+        reg.addEventListener("updatefound", () => {
+          const installing = reg.installing;
+          installing?.addEventListener("statechange", () => {
+            if (installing.state === "installed" && navigator.serviceWorker.controller) {
+              setShowUpdateToast(true);
+            }
+          });
         });
+        // Handle the case where a waiting worker already exists on load
+        checkWaiting();
+      })
+      .catch(() => {
+        /* SW unavailable — dev mode or browser restriction */
       });
-    }).catch(() => {/* SW not available in this environment */});
 
-    // Trigger sync when app comes online
+    // When a new SW takes over, reload once
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
+
+    // Trigger background sync queue when coming online
     window.addEventListener("online", () => {
       import("../lib/formlens/syncQueue").then(({ triggerSync }) => triggerSync());
     });
   }, []);
 
   const handleUpdate = () => {
+    // Tell the waiting SW to skip waiting and become active
     registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
     setShowUpdateToast(false);
-    window.location.reload();
+    // controllerchange listener above will reload
   };
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       {showUpdateToast && <UpdateToast onUpdate={handleUpdate} />}
     </QueryClientProvider>

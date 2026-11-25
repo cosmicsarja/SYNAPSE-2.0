@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FormsRouteImport } from './routes/forms'
+import { Route as InstallRouteImport } from './routes/install'
 import { Route as ScanRouteImport } from './routes/scan'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
@@ -24,6 +25,11 @@ const IndexRoute = IndexRouteImport.update({
 const FormsRoute = FormsRouteImport.update({
   id: '/forms',
   path: '/forms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InstallRoute = InstallRouteImport.update({
+  id: '/install',
+  path: '/install',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ScanRoute = ScanRouteImport.update({
@@ -50,6 +56,7 @@ const ReviewIdRoute = ReviewIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/forms': typeof FormsRoute
+  '/install': typeof InstallRoute
   '/scan': typeof ScanRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forms': typeof FormsRoute
+  '/install': typeof InstallRoute
   '/scan': typeof ScanRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/forms': typeof FormsRoute
+  '/install': typeof InstallRoute
   '/scan': typeof ScanRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
@@ -74,13 +83,28 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/forms' | '/scan' | '/settings' | '/setup' | '/review/$id'
+  fullPaths:
+    | '/'
+    | '/forms'
+    | '/install'
+    | '/scan'
+    | '/settings'
+    | '/setup'
+    | '/review/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/forms' | '/scan' | '/settings' | '/setup' | '/review/$id'
+  to:
+    | '/'
+    | '/forms'
+    | '/install'
+    | '/scan'
+    | '/settings'
+    | '/setup'
+    | '/review/$id'
   id:
     | '__root__'
     | '/'
     | '/forms'
+    | '/install'
     | '/scan'
     | '/settings'
     | '/setup'
@@ -90,6 +114,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   FormsRoute: typeof FormsRoute
+  InstallRoute: typeof InstallRoute
   ScanRoute: typeof ScanRoute
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
@@ -110,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/forms'
       fullPath: '/forms'
       preLoaderRoute: typeof FormsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/install': {
+      id: '/install'
+      path: '/install'
+      fullPath: '/install'
+      preLoaderRoute: typeof InstallRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/scan': {
@@ -146,6 +178,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FormsRoute: FormsRoute,
+  InstallRoute: InstallRoute,
   ScanRoute: ScanRoute,
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,
