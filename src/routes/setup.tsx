@@ -9,7 +9,6 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Download, CheckCircle, Circle, Wifi, WifiOff, AlertCircle } from 'lucide-react';
-import { InstallBanner } from '@/components/formlens/InstallBanner';
 import {
   downloadOfflinePack,
   verifyOfflinePack,
@@ -165,8 +164,6 @@ function SetupPage() {
               <Download className="mr-2 h-5 w-5" />
               Download Offline Pack
             </Button>
-
-            <InstallBanner variant="card" />
           </>
         )}
 

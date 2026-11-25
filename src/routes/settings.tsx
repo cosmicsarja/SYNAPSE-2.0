@@ -10,7 +10,6 @@ import { Separator } from '@/components/ui/separator';
 import { BottomNav } from '@/components/formlens/BottomNav';
 import { OfflineStatusBar } from '@/components/formlens/OfflineStatusBar';
 import { OnlineIndicator } from '@/components/formlens/OfflineStatusBar';
-import { InstallBanner } from '@/components/formlens/InstallBanner';
 import { useStorageEstimate } from '@/hooks/formlens/useStorageEstimate';
 import { useInstallPrompt } from '@/hooks/formlens/useInstallPrompt';
 import { getSetting, setSetting, db } from '@/db';
@@ -26,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Download, HardDrive, Cpu, Languages, Cloud, Info, ExternalLink } from 'lucide-react';
+import { Download, HardDrive, Cpu, Languages, Cloud, Smartphone, Info } from 'lucide-react';
 
 export const Route = createFileRoute('/settings')({
   head: () => ({ meta: [{ title: 'Settings – FormLens' }] }),
@@ -35,12 +34,17 @@ export const Route = createFileRoute('/settings')({
 
 function SettingsPage() {
   const storage = useStorageEstimate();
+  const { canInstall, install } = useInstallPrompt();
   const [ocrEngine, setOcrEngine] = useState<OcrEngine>('mock');
   const [language, setLanguage] = useState<'en' | 'kn'>('en');
   const [packVersion, setPackVersion] = useState<string | null>(null);
   const [setupComplete, setSetupComplete] = useState(false);
   const [clearingForms, setClearingForms] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
+
+  // iOS detection
+  const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = typeof window !== 'undefined' && ('standalone' in navigator) && (navigator as { standalone?: boolean }).standalone === true;
 
   useEffect(() => {
     Promise.all([
@@ -103,20 +107,26 @@ function SettingsPage() {
       <div className="flex-1 overflow-y-auto pb-24">
 
         {/* Install prompt */}
-        <InstallBanner variant="card" className="mx-4 mt-4" />
-        {/* Get install link */}
-        <div className="px-4 pb-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full text-muted-foreground"
-            onClick={() => window.location.href = '/install'}
-          >
-            <ExternalLink className="mr-2 h-4 w-4" />
-            Get shareable install link / QR code
-          </Button>
-        </div>
-        <Separator />
+        {(canInstall || (isIos && !isStandalone)) && (
+          <>
+            <div className="px-4 py-4">
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-2">
+                <div className="flex items-center gap-2 font-semibold text-sm">
+                  <Smartphone className="h-4 w-4 text-primary" />
+                  Install App
+                </div>
+                {isIos && !isStandalone
+                  ? <p className="text-xs text-muted-foreground">
+                      Tap the Share button and select <strong>"Add to Home Screen"</strong> to install FormLens.
+                      <br />ಷೇರ್ ಬಟನ್ ಒತ್ತಿ "Add to Home Screen" ಆಯ್ಕೆ ಮಾಡಿ.
+                    </p>
+                  : <Button size="sm" onClick={install}>Install</Button>
+                }
+              </div>
+            </div>
+            <Separator />
+          </>
+        )}
 
         {/* Offline Pack */}
         <div className="px-4 py-4 space-y-3">
