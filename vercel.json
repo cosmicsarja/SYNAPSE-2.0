@@ -3,10 +3,15 @@
   "outputDirectory": "dist/client",
   "installCommand": "npm install",
   "framework": null,
+  "functions": {
+    "api/ssr.js": {
+      "runtime": "edge"
+    }
+  },
   "rewrites": [
     {
-      "source": "/((?!assets|icons|models|ort|data|templates|manifest.webmanifest|sw.js|workbox-.*|robots.txt|favicon.ico|\\.well-known).*)",
-      "destination": "/index.html"
+      "source": "/((?!assets|icons|models|ort|data|templates|manifest.webmanifest|sw.js|workbox-.*|robots.txt|favicon.ico|\\.well-known|_vercel).*)",
+      "destination": "/api/ssr"
     }
   ],
   "headers": [
