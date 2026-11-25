@@ -1,53 +1,70 @@
 {
-  "version": "1.1.0",
+  "version": "2.0.0",
+  "generatedAt": "2026-11-25T14:45:42.411Z",
   "files": [
     {
-      "name": "eng.traineddata.gz",
-      "url": "/tessdata/eng.traineddata.gz",
-      "size": 2952873,
-      "description": "English OCR model (Tesseract LSTM)"
+      "name": "ppocrv4_det.v1.onnx",
+      "url": "/models/ppocrv4_det.v1.onnx",
+      "size": 4745517,
+      "sha256": "d2a7720d45a54257208b1e13e36a8479894cb74155a5efe29462512d42f49da9",
+      "version": "ppocrv4-mobile-v1",
+      "description": "DBNet text region detection (bounding boxes)"
     },
     {
-      "name": "kan.traineddata.gz",
-      "url": "/tessdata/kan.traineddata.gz",
-      "size": 1914250,
-      "description": "Kannada OCR model (Tesseract LSTM)"
+      "name": "ppocrv4_rec_kannada.v1.onnx",
+      "url": "/models/ppocrv4_rec_kannada.v1.onnx",
+      "size": 7681381,
+      "sha256": "9c1e186ea1d13cf6c853e57b42d382c3961fdd6acc2409e0d0dc44defc9f152b",
+      "version": "ppocrv4-kannada-v1",
+      "description": "Kannada script text recognition (SVTR/CRNN CTC)"
     },
     {
-      "name": "worker.min.js",
-      "url": "/tesseract/worker.min.js",
-      "size": 111307,
-      "description": "OCR Web Worker runtime"
+      "name": "ppocrv4_dict_kannada.v1.txt",
+      "url": "/models/ppocrv4_dict_kannada.v1.txt",
+      "size": 452,
+      "sha256": "fad3f765943275eec2134a6fbc9b52785426641104d4e7db3a159dc73f341dde",
+      "version": "ppocrv4-kannada-v1",
+      "description": "Kannada CTC character dictionary"
     },
     {
-      "name": "tesseract-core-simd-lstm.wasm.js",
-      "url": "/tesseract/tesseract-core-simd-lstm.wasm.js",
-      "size": 3899472,
-      "description": "OCR SIMD WASM core"
+      "name": "ppocrv5_rec_latin.v1.onnx",
+      "url": "/models/ppocrv5_rec_latin.v1.onnx",
+      "size": 7904513,
+      "sha256": "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a",
+      "version": "ppocrv5-latin-v1",
+      "description": "English / Latin & digits text recognition (CTC)"
     },
     {
-      "name": "tesseract-core-lstm.wasm.js",
-      "url": "/tesseract/tesseract-core-lstm.wasm.js",
-      "size": 3896484,
-      "description": "OCR fallback WASM core"
-    },
-    {
-      "name": "charset.json",
-      "url": "/models/charset.json",
-      "size": 637,
-      "description": "CTC character set for Kannada + English"
+      "name": "ppocrv5_dict_latin.v1.txt",
+      "url": "/models/ppocrv5_dict_latin.v1.txt",
+      "size": 1634,
+      "sha256": "3c0a8a79b612653c25f765271714f71281e4e955962c153e272b7b8c1d2b13ff",
+      "version": "ppocrv5-latin-v1",
+      "description": "English / Latin CTC character dictionary"
     },
     {
       "name": "karnataka_localities.json",
       "url": "/data/karnataka_localities.json",
       "size": 2603,
+      "sha256": "f1c704543586801ab0bf90baabbcb68d6cfb0c17a3ccbb6899e70b43eb6cd607",
+      "version": "local-1",
       "description": "Karnataka district/taluk/village dictionary"
     },
     {
-      "name": "ocr_crnn_int8.onnx",
-      "url": "/models/ocr_crnn_int8.onnx",
-      "size": 1,
-      "description": "Custom CRNN ONNX model slot (placeholder until custom model is provided)"
+      "name": "ort-wasm-simd-threaded.wasm",
+      "url": "/ort/ort-wasm-simd-threaded.wasm",
+      "size": 14848852,
+      "sha256": "4b884c203b0fa48d057be3332c65513ff85aa3c5bddd6946acc0fab7ecda001d",
+      "version": "local-1",
+      "description": "ONNX Runtime WebAssembly core"
+    },
+    {
+      "name": "ort-wasm-simd-threaded.jsep.wasm",
+      "url": "/ort/ort-wasm-simd-threaded.jsep.wasm",
+      "size": 29520971,
+      "sha256": "5ab8361783822d02a57d1e97cf2514bceb451a628f2b29ae0d7b6e618201ff8f",
+      "version": "local-1",
+      "description": "ONNX Runtime WebGPU/JSEP WASM core"
     }
   ]
 }

@@ -1,0 +1,57 @@
+{
+  "repo": "byrizki/rusto-models",
+  "licence": "MIT",
+  "updatedAt": "2026-11-25T14:45:42.344Z",
+  "models": [
+    {
+      "key": "det",
+      "name": "ppocrv4_det.v1.onnx",
+      "repoPath": "ppocrv4-mobile/det.onnx",
+      "url": "https://huggingface.co/byrizki/rusto-models/resolve/main/ppocrv4-mobile/det.onnx",
+      "size": 4745517,
+      "sha256": "d2a7720d45a54257208b1e13e36a8479894cb74155a5efe29462512d42f49da9",
+      "version": "ppocrv4-mobile-v1",
+      "purpose": "DBNet text region detection (bounding boxes)"
+    },
+    {
+      "key": "rec_kn",
+      "name": "ppocrv4_rec_kannada.v1.onnx",
+      "repoPath": "multilingual/ppocrv4_rec_kannada.onnx",
+      "url": "https://huggingface.co/byrizki/rusto-models/resolve/main/multilingual/ppocrv4_rec_kannada.onnx",
+      "size": 7681381,
+      "sha256": "9c1e186ea1d13cf6c853e57b42d382c3961fdd6acc2409e0d0dc44defc9f152b",
+      "version": "ppocrv4-kannada-v1",
+      "purpose": "Kannada script text recognition (SVTR/CRNN CTC)"
+    },
+    {
+      "key": "dict_kn",
+      "name": "ppocrv4_dict_kannada.v1.txt",
+      "repoPath": "multilingual/ppocrv4_dict_kannada.txt",
+      "url": "https://huggingface.co/byrizki/rusto-models/resolve/main/multilingual/ppocrv4_dict_kannada.txt",
+      "size": 452,
+      "sha256": "fad3f765943275eec2134a6fbc9b52785426641104d4e7db3a159dc73f341dde",
+      "version": "ppocrv4-kannada-v1",
+      "purpose": "Kannada CTC character dictionary"
+    },
+    {
+      "key": "rec_en",
+      "name": "ppocrv5_rec_latin.v1.onnx",
+      "repoPath": "multilingual/ppocrv5_rec_latin.onnx",
+      "url": "https://huggingface.co/byrizki/rusto-models/resolve/main/multilingual/ppocrv5_rec_latin.onnx",
+      "size": 7904513,
+      "sha256": "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a",
+      "version": "ppocrv5-latin-v1",
+      "purpose": "English / Latin & digits text recognition (CTC)"
+    },
+    {
+      "key": "dict_en",
+      "name": "ppocrv5_dict_latin.v1.txt",
+      "repoPath": "multilingual/ppocrv5_dict_latin.txt",
+      "url": "https://huggingface.co/byrizki/rusto-models/resolve/main/multilingual/ppocrv5_dict_latin.txt",
+      "size": 1634,
+      "sha256": "3c0a8a79b612653c25f765271714f71281e4e955962c153e272b7b8c1d2b13ff",
+      "version": "ppocrv5-latin-v1",
+      "purpose": "English / Latin CTC character dictionary"
+    }
+  ]
+}

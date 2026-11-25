@@ -18,6 +18,7 @@ const { count, size, warnings } = await generateSW({
     'data/*.json',
     'templates/*.json',
     'models/*.json',
+    'models/*.txt',
   ],
   maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
   navigateFallback: '/index.html',
@@ -45,7 +46,7 @@ const { count, size, warnings } = await generateSW({
       },
     },
     {
-      urlPattern: /\/models\/.*\.(onnx|json)$/,
+      urlPattern: /\/models\/.*\.(onnx|json|txt)$/,
       handler: 'CacheFirst',
       options: {
         cacheName: 'formlens-offline-pack-v1',

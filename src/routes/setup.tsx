@@ -74,11 +74,12 @@ function SetupPage() {
     // App shell
     setStatus('app', 'ok');
 
-    // OCR model files in cache (Tesseract traineddata + optional ONNX)
+    // OCR model files in cache (PP-OCR ONNX models + dictionaries)
     const cache = await caches.open('formlens-offline-pack-v1');
-    const engCached = await cache.match('/tessdata/eng.traineddata.gz');
-    const kanCached = await cache.match('/tessdata/kan.traineddata.gz');
-    setStatus('ocr', engCached && kanCached ? 'ok' : 'error');
+    const detCached = await cache.match('/models/ppocrv4_det.v1.onnx');
+    const knCached = await cache.match('/models/ppocrv4_rec_kannada.v1.onnx');
+    const enCached = await cache.match('/models/ppocrv5_rec_latin.v1.onnx');
+    setStatus('ocr', detCached && knCached && enCached ? 'ok' : 'error');
 
     // Charset
     const charsetFile = m.files.find((f) => f.name === 'charset.json');

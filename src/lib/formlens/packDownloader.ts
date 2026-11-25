@@ -8,7 +8,16 @@ export interface ManifestFile {
   name: string;
   url: string;
   size: number;
+  sha256?: string;
+  version?: string;
   description?: string;
+}
+
+async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export interface Manifest {
@@ -75,8 +84,16 @@ export async function downloadOfflinePack(
 
     const res = await fetch(file.url);
     if (!res.ok) throw new Error(`Failed to download ${file.name}: ${res.status}`);
-    await cache.put(file.url, res);
-    bytesDownloaded += file.size;
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+    const buf = await res.arrayBuffer();
+    if (file.sha256) {
+      const actual = await sha256Hex(buf);
+      if (actual !== file.sha256) {
+        throw new Error(`Integrity check failed for ${file.name} (expected ${file.sha256.slice(0, 12)}…, got ${actual.slice(0, 12)}…)`);
+      }
+    }
+    await cache.put(file.url, new Response(buf, { status: 200, headers: { 'Content-Type': contentType } }));
+    bytesDownloaded += buf.byteLength || file.size;
   }
 
   // 3. Cache app shell URLs
