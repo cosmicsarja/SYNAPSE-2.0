@@ -5,7 +5,13 @@
  */
 
 export const ORT_CONFIG = {
-  PROVIDERS: ['webgpu', 'wasm'] as const,
+  /**
+   * Provider order: try WebGPU only if explicitly available; always fall back to wasm.
+   * We keep 'wasm' first here because WebGPU's initWasm() path in onnxruntime-web
+   * can poison the global WASM init state on failure, breaking subsequent sessions.
+   * WebGPU acceleration is re-enabled per-session when available.
+   */
+  PROVIDERS: ['wasm'] as const,
   WASM_PATH: '/ort/',
   NUM_THREADS: 1,
 } as const;

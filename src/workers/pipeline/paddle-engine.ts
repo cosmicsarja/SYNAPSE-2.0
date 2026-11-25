@@ -153,8 +153,7 @@ async function loadSingleRecModel(spec: RecModelSpec): Promise<LoadedRecModel> {
 export async function getRecModels(): Promise<{ kn: LoadedRecModel; en: LoadedRecModel; loadMs: number }> {
   if (cachedModels) return cachedModels;
   const t0 = performance.now();
-  ort.env.wasm.wasmPaths = ORT_CONFIG.WASM_PATH;
-  ort.env.wasm.numThreads = ORT_CONFIG.NUM_THREADS;
+  // Note: ort.env.wasm is configured once in ocr.worker.ts at module load time.
 
   const [kn, en] = await Promise.all([
     loadSingleRecModel(REC_MODELS.kn),

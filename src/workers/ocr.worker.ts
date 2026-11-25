@@ -1,11 +1,22 @@
 /**
  * OCR Web Worker
  * All ONNX / PP-OCR inference runs here, off the main thread.
+ *
+ * IMPORTANT: ort.env.wasm must be configured ONCE before any InferenceSession.create()
+ * call, and initWasm() must only ever succeed once per Worker lifetime.
+ * We configure it here at module load time so the detection + recognition sessions
+ * share the same already-initialized WASM runtime.
  */
+import * as ort from 'onnxruntime-web';
+import { ORT_CONFIG } from '@/config/ocrModels';
 import { MockOcrEngine } from './mock-engine';
 import { OnnxOcrEngine } from './onnx-engine';
 import { PaddleOcrEngine } from './pipeline/paddle-engine';
 import type { OcrEngine, FieldType } from '@/config/model';
+
+// Configure ORT WASM once at module load — before any session is created.
+ort.env.wasm.wasmPaths = ORT_CONFIG.WASM_PATH;
+ort.env.wasm.numThreads = ORT_CONFIG.NUM_THREADS;
 
 let engine: OcrEngine | null = null;
 let paddleEngine: PaddleOcrEngine | null = null;

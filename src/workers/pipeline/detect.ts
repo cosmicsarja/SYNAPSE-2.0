@@ -44,8 +44,7 @@ export async function getDetectorSession(): Promise<{ session: ort.InferenceSess
     return { session: cachedDetSession, loadMs: detLoadMs };
   }
   const t0 = performance.now();
-  ort.env.wasm.wasmPaths = ORT_CONFIG.WASM_PATH;
-  ort.env.wasm.numThreads = ORT_CONFIG.NUM_THREADS;
+  // Note: ort.env.wasm is configured once in ocr.worker.ts at module load time.
 
   let lastErr: unknown = null;
   for (const provider of ORT_CONFIG.PROVIDERS) {
