@@ -16,6 +16,7 @@ import {
   type OcrLangMode,
 } from '@/workers/tesseract-engine';
 import { recognizeWithCloudBackend, getCloudOcrUrl } from '@/workers/cloud-engine';
+import { getGeminiConfig, recognizeWithGemini } from '@/workers/gemini-engine';
 import type { FullPipelineOutput } from '@/workers/pipeline/paddle-engine';
 
 export interface OcrProgress {
@@ -121,6 +122,31 @@ export function useOcrWorker(): UseOcrWorkerReturn {
       workerRef.current = null;
     }
 
+    if (engine === 'gemini') {
+      const { apiKey } = await getGeminiConfig();
+      if (navigator.onLine && apiKey) {
+        setReady(true);
+        setError(null);
+        return;
+      }
+      if (!apiKey) {
+        const err = new Error('Gemini API key not set. Add VITE_GEMINI_API_KEY in .env or Settings.');
+        setError(err.message);
+        throw err;
+      }
+      // Offline -> prepare local Tesseract fallback
+      try {
+        await initTesseract(langMode);
+        setReady(true);
+        setError(null);
+        return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        throw err;
+      }
+    }
+
     if (engine === 'cloud') {
       const url = await getCloudOcrUrl();
       if (navigator.onLine && url) {
@@ -194,6 +220,17 @@ export function useOcrWorker(): UseOcrWorkerReturn {
   const recognizeFullPage = useCallback(
     async (imageData: ImageData, langMode: OcrLangMode = 'eng+kan'): Promise<FullPageOcrResult> => {
       setProgress({ fieldIndex: 0, totalFields: 1 });
+      if (engineRef.current === 'gemini') {
+        try {
+          return await recognizeWithGemini(imageData, langMode);
+        } catch (err) {
+          if (!navigator.onLine) {
+            console.warn('[GeminiOCR] Offline, falling back to local Tesseract:', err);
+            return recognizeFullPageWithTesseract(imageData, langMode);
+          }
+          throw err;
+        }
+      }
       if (engineRef.current === 'cloud') {
         try {
           return await recognizeWithCloudBackend(imageData, langMode);

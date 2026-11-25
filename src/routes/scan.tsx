@@ -67,6 +67,7 @@ function ScanPage() {
   const [saving, setSaving] = useState(false);
 
   const [captureMode, setCaptureMode] = useState<CaptureMode>('single');
+  const [ocrEngine, setOcrEngine] = useState<OcrEngine>('paddle');
   const [batchQueue, setBatchQueue] = useState<BatchQueueItem[]>([]);
   const [batchStageMsg, setBatchStageMsg] = useState<string>('');
   const batchProcessingRef = useRef(false);
@@ -118,7 +119,7 @@ function ScanPage() {
               script: r.script,
               model: r.model,
             }));
-          } else if (engine === 'tesseract' || engine === 'cloud') {
+          } else if (engine === 'tesseract' || engine === 'cloud' || engine === 'gemini') {
             const res = await recognizeFullPage(imgData, next.langMode);
             boxes = res.lines.map((l) => ({
               bbox: l.bbox,
@@ -174,6 +175,7 @@ function ScanPage() {
     void getSetting<ScanMode>('scan_mode', 'auto').then(setScanMode);
     void getSetting<string>('selected_template', 'ration-card').then(setSelectedTemplateId);
     void getSetting<CaptureMode>('capture_mode', 'single').then(setCaptureMode);
+    void getSetting<OcrEngine>('ocr_engine', 'paddle').then(setOcrEngine);
     void resetStuckReadingBatchItems()
       .then(() => refreshBatchQueue())
       .then((items) => {
@@ -207,9 +209,11 @@ function ScanPage() {
       setStatusMsg(
         engine === 'paddle'
           ? 'Loading offline PP-OCR detection + Kannada/English models…'
-          : engine === 'tesseract'
-            ? `Loading offline Tesseract OCR (${mode})…`
-            : `Starting ${engine} OCR…`,
+          : engine === 'gemini'
+            ? 'Detecting & reading Kannada/English with Gemini AI…'
+            : engine === 'tesseract'
+              ? `Loading offline Tesseract OCR (${mode})…`
+              : `Starting ${engine} OCR…`,
       );
       await initialize(engine, mode);
 
@@ -229,8 +233,12 @@ function ScanPage() {
         setTimings(out.timings);
         setLines(detectedLines);
         setFullText(detectedLines.map((l) => l.text).filter(Boolean).join('\n'));
-      } else if (engine === 'tesseract' || engine === 'cloud') {
-        setStatusMsg('Reading text and numbers from image…');
+      } else if (engine === 'tesseract' || engine === 'cloud' || engine === 'gemini') {
+        setStatusMsg(
+          engine === 'gemini'
+            ? 'Extracting text & bounding boxes with Gemini Vision…'
+            : 'Reading text and numbers from image…',
+        );
         setProgressPct(55);
         const res = await recognizeFullPage(croppedData, mode);
         setLines(res.lines);
@@ -378,6 +386,32 @@ function ScanPage() {
 
             {captureMode === 'batch' && (
               <div className="flex items-center gap-1.5">
+                <div className="flex rounded bg-white/10 p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOcrEngine('paddle');
+                      void setSetting('ocr_engine', 'paddle');
+                    }}
+                    className={`rounded px-2 py-0.5 font-medium ${
+                      ocrEngine !== 'gemini' ? 'bg-white text-black' : 'text-white/80'
+                    }`}
+                  >
+                    Offline
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOcrEngine('gemini');
+                      void setSetting('ocr_engine', 'gemini');
+                    }}
+                    className={`rounded px-2 py-0.5 font-medium ${
+                      ocrEngine === 'gemini' ? 'bg-emerald-400 text-black' : 'text-white/80'
+                    }`}
+                  >
+                    Gemini AI
+                  </button>
+                </div>
                 <div className="flex rounded bg-white/10 p-0.5 text-xs">
                   <button
                     type="button"

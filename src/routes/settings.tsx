@@ -17,6 +17,7 @@ import { useOcrWorker } from '@/hooks/formlens/useOcrWorker';
 import { runDiagnosticsBenchmark, type BenchPageResult } from '@/lib/formlens/benchmark';
 import { exportCorrectionsDataset } from '@/lib/formlens/corrections';
 import type { PipelineTimings } from '@/workers/pipeline/paddle-engine';
+import { hasEnvGeminiKey, testGeminiConnection } from '@/workers/gemini-engine';
 import { getSetting, setSetting, getCorrectionCount, clearCorrections, db } from '@/db';
 import type { OcrEngine } from '@/db/schema';
 import {
@@ -43,6 +44,9 @@ function SettingsPage() {
   const [ocrEngine, setOcrEngine] = useState<OcrEngine>('paddle');
   const [cloudUrl, setCloudUrl] = useState('');
   const [cloudTestStatus, setCloudTestStatus] = useState<string | null>(null);
+  const [geminiKey, setGeminiKey] = useState('');
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
+  const [geminiTestStatus, setGeminiTestStatus] = useState<string | null>(null);
   const [language, setLanguage] = useState<'en' | 'kn'>('en');
   const [packVersion, setPackVersion] = useState<string | null>(null);
   const [setupComplete, setSetupComplete] = useState(false);
@@ -67,7 +71,9 @@ function SettingsPage() {
       getSetting<number>('det_max_side', 960),
       db.forms.orderBy('createdAt').reverse().first(),
       getCorrectionCount(),
-    ]).then(([eng, url, lang, ver, setup, maxSide, latestForm, corrCount]) => {
+      getSetting<string>('gemini_api_key', ''),
+      getSetting<string>('gemini_model', (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'gemini-2.5-flash'),
+    ]).then(([eng, url, lang, ver, setup, maxSide, latestForm, corrCount, gKey, gModel]) => {
       setOcrEngine(eng);
       setCloudUrl(url);
       setLanguage(lang);
@@ -75,6 +81,8 @@ function SettingsPage() {
       setSetupComplete(setup);
       setDetMaxSide(maxSide);
       setCorrectionCount(corrCount);
+      setGeminiKey(gKey);
+      setGeminiModel(gModel);
       if (latestForm?.timingsJson) {
         try {
           setLastTimings(JSON.parse(latestForm.timingsJson) as PipelineTimings);
@@ -126,6 +134,12 @@ function SettingsPage() {
     } catch (err) {
       setCloudTestStatus(`✗ Failed: ${err instanceof Error ? err.message : 'unreachable'}`);
     }
+  };
+
+  const handleTestGemini = async () => {
+    setGeminiTestStatus('Testing…');
+    const res = await testGeminiConnection(geminiKey, geminiModel);
+    setGeminiTestStatus(res.ok ? `✓ ${res.message}` : `✗ ${res.message}`);
   };
 
   const handleLanguageToggle = async (useKn: boolean) => {
@@ -278,7 +292,12 @@ function SettingsPage() {
                 {
                   id: 'paddle' as const,
                   title: 'PP-OCRv4/v5 Offline (Auto Detect + ಕನ್ನಡ/EN)',
-                  desc: 'Recommended: on-device DBNet text detection + Kannada & Latin ONNX recognition',
+                  desc: 'Recommended offline: on-device DBNet text detection + Kannada & Latin ONNX recognition',
+                },
+                {
+                  id: 'gemini' as const,
+                  title: 'Gemini Vision AI (Online + Editable JSON/PDF)',
+                  desc: 'High-accuracy Kannada + English printed & handwritten OCR using VITE_GEMINI_API_KEY when online',
                 },
                 {
                   id: 'tesseract' as const,
@@ -322,6 +341,48 @@ function SettingsPage() {
               </button>
             ))}
           </div>
+          {ocrEngine === 'gemini' && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+              <div className="text-xs text-muted-foreground">
+                {hasEnvGeminiKey()
+                  ? '✓ VITE_GEMINI_API_KEY detected from .env'
+                  : 'Set VITE_GEMINI_API_KEY in .env (or enter an override key below):'}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  placeholder={hasEnvGeminiKey() ? 'Using .env key (optional override)' : 'AIza...'}
+                  value={geminiKey}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setGeminiKey(v);
+                    setGeminiTestStatus(null);
+                    void setSetting('gemini_api_key', v.trim());
+                  }}
+                  className="text-xs h-8"
+                />
+                <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={() => void handleTestGemini()}>
+                  Test
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs shrink-0">Model:</Label>
+                <Input
+                  value={geminiModel}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setGeminiModel(v);
+                    void setSetting('gemini_model', v.trim());
+                  }}
+                  placeholder="gemini-2.5-flash"
+                  className="text-xs h-7"
+                />
+              </div>
+              {geminiTestStatus && (
+                <div className="text-xs text-muted-foreground">{geminiTestStatus}</div>
+              )}
+            </div>
+          )}
           {ocrEngine === 'cloud' && (
             <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
               <Label className="text-xs">Python OCR Backend URL (FastAPI)</Label>
