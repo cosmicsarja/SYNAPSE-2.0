@@ -2,16 +2,19 @@
  * Review route — editable field-by-field OCR review with exports.
  */
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { FieldCard } from '@/components/formlens/FieldCard';
+import { BoxReviewOverlay } from '@/components/formlens/BoxReviewOverlay';
 import { BottomNav } from '@/components/formlens/BottomNav';
 import { OfflineStatusBar } from '@/components/formlens/OfflineStatusBar';
 import { ConfidenceBadge } from '@/components/formlens/ConfidenceBadge';
+import { CONFIDENCE_THRESHOLDS } from '@/config/ocrModels';
+import { useOcrWorker } from '@/hooks/formlens/useOcrWorker';
 import { getFormWithFields, updateFormField, markFormReviewed, db } from '@/db';
 import type { SavedForm, FormField } from '@/db/schema';
 import type { FieldType } from '@/config/model';
-import { exportJson, exportCsv, exportPdf } from '@/lib/formlens/exports';
+import { exportJson, exportCsv, exportPdf, exportAnnotatedPng } from '@/lib/formlens/exports';
 import { enqueueSyncForm } from '@/lib/formlens/syncQueue';
 import { ChevronLeft, Download } from 'lucide-react';
 import {
@@ -26,16 +29,47 @@ export const Route = createFileRoute('/review/$id')({
   component: ReviewPage,
 });
 
+async function extractNormCrop(
+  imageSrc: string,
+  normBbox: [number, number, number, number],
+): Promise<{ imageData: ImageData; cropDataUrl: string }> {
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('Failed to load form image'));
+    img.src = imageSrc;
+  });
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const sx = Math.max(0, Math.floor(normBbox[0] * w));
+  const sy = Math.max(0, Math.floor(normBbox[1] * h));
+  const sw = Math.max(4, Math.min(w - sx, Math.ceil((normBbox[2] - normBbox[0]) * w)));
+  const sh = Math.max(4, Math.min(h - sy, Math.ceil((normBbox[3] - normBbox[1]) * h)));
+  const canvas = document.createElement('canvas');
+  canvas.width = sw;
+  canvas.height = sh;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  return {
+    imageData: ctx.getImageData(0, 0, sw, sh),
+    cropDataUrl: canvas.toDataURL('image/jpeg', 0.78),
+  };
+}
+
 function ReviewPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const formId = parseInt(id, 10);
+  const { initialize, recognize } = useOcrWorker();
 
   const [form, setForm] = useState<SavedForm | null>(null);
   const [fields, setFields] = useState<FormField[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
+  const [selectedFieldId, setSelectedFieldId] = useState<number | null>(null);
+  const [rerunningId, setRerunningId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     getFormWithFields(formId).then((result) => {
@@ -61,6 +95,91 @@ function ReviewPage() {
   const handleAcceptAll = () => {
     setAccepted(new Set(fields.map((f) => f.id!).filter((id) => id !== undefined)));
   };
+
+  const handleSelectField = useCallback((fieldId: number) => {
+    setSelectedFieldId(fieldId);
+    const el = cardRefs.current.get(fieldId);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, []);
+
+  const handleRerunBox = useCallback(async (field: FormField) => {
+    const imgSrc = form?.imageDataUrl ?? form?.thumbnailDataUrl;
+    if (!imgSrc || !field.normBbox || field.id === undefined) return;
+    setRerunningId(field.id);
+    try {
+      await initialize('paddle', 'eng+kan');
+      const { imageData, cropDataUrl } = await extractNormCrop(imgSrc, field.normBbox);
+      const res = await recognize({
+        imageData,
+        fieldType: (field.fieldType as FieldType) || 'text',
+        fieldIndex: 0,
+        totalFields: 1,
+      });
+      await db.formFields.update(field.id, {
+        textValue: res.text,
+        originalText: res.text,
+        confidence: res.confidence,
+        script: res.script,
+        wasEdited: false,
+        cropDataUrl,
+      });
+      setFields((prev) =>
+        prev.map((f) =>
+          f.id === field.id
+            ? {
+                ...f,
+                textValue: res.text,
+                originalText: res.text,
+                confidence: res.confidence,
+                script: res.script,
+                wasEdited: false,
+                cropDataUrl,
+              }
+            : f,
+        ),
+      );
+    } finally {
+      setRerunningId(null);
+    }
+  }, [form, initialize, recognize]);
+
+  const handleAddBox = useCallback(async (normBbox: [number, number, number, number]) => {
+    const imgSrc = form?.imageDataUrl ?? form?.thumbnailDataUrl;
+    if (!imgSrc) return;
+    await initialize('paddle', 'eng+kan');
+    const { imageData, cropDataUrl } = await extractNormCrop(imgSrc, normBbox);
+    const res = await recognize({
+      imageData,
+      fieldType: 'text',
+      fieldIndex: 0,
+      totalFields: 1,
+    });
+    const newField: Omit<FormField, 'id'> = {
+      formId,
+      fieldId: `manual_${Date.now()}`,
+      labelEn: `Manual Box ${fields.length + 1}`,
+      labelKn: `ಹಸ್ತಚಾಲಿತ ಬಾಕ್ಸ್ ${fields.length + 1}`,
+      fieldType: 'text',
+      textValue: res.text,
+      originalText: res.text,
+      confidence: res.confidence,
+      wasEdited: false,
+      cropDataUrl,
+      normBbox,
+      script: res.script,
+      model: 'paddle',
+      category: 'other',
+    };
+    const newId = (await db.formFields.add(newField)) as number;
+    setFields((prev) => [...prev, { ...newField, id: newId }]);
+    setSelectedFieldId(newId);
+  }, [form, formId, fields.length, initialize, recognize]);
+
+  const handleDeleteBox = useCallback(async (fieldId: number) => {
+    await db.formFields.delete(fieldId);
+    setFields((prev) => prev.filter((f) => f.id !== fieldId));
+    if (selectedFieldId === fieldId) setSelectedFieldId(null);
+  }, [selectedFieldId]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -91,11 +210,12 @@ function ReviewPage() {
     );
   }
 
-  // Split fields: low confidence first
-  const needsReview = fields.filter((f) => f.confidence < 0.60 && !accepted.has(f.id!));
-  const others = fields.filter((f) => f.confidence >= 0.60 || accepted.has(f.id!));
+  // Split fields: low confidence first (using CONFIDENCE_THRESHOLDS.medium)
+  const needsReview = fields.filter((f) => f.confidence < CONFIDENCE_THRESHOLDS.medium && !accepted.has(f.id!));
+  const others = fields.filter((f) => f.confidence >= CONFIDENCE_THRESHOLDS.medium || accepted.has(f.id!));
 
   const avgConf = fields.reduce((s, f) => s + f.confidence, 0) / (fields.length || 1);
+  const pageImgSrc = form.imageDataUrl ?? form.thumbnailDataUrl;
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -122,7 +242,7 @@ function ReviewPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => exportJson(form, fields)}>
-              Export JSON
+              Export JSON (with bboxes)
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => exportCsv(form, fields)}>
               Export CSV
@@ -130,9 +250,28 @@ function ReviewPage() {
             <DropdownMenuItem onClick={() => exportPdf(form, fields)}>
               Export PDF
             </DropdownMenuItem>
+            {pageImgSrc && (
+              <DropdownMenuItem onClick={() => void exportAnnotatedPng(form, fields)}>
+                Export Annotated PNG
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Interactive bounding-box overlay */}
+      {pageImgSrc && (
+        <BoxReviewOverlay
+          imageDataUrl={pageImgSrc}
+          fields={fields}
+          selectedFieldId={selectedFieldId}
+          onSelectField={handleSelectField}
+          onAddBox={handleAddBox}
+          onDeleteBox={handleDeleteBox}
+          onRerunBox={handleRerunBox}
+          rerunningId={rerunningId}
+        />
+      )}
 
       {/* Fields */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-36">
@@ -144,19 +283,27 @@ function ReviewPage() {
             </h2>
             <div className="space-y-3">
               {needsReview.map((field) => (
-                <FieldCard
+                <div
                   key={field.id}
-                  fieldId={field.fieldId}
-                  labelEn={field.labelEn}
-                  labelKn={field.labelKn}
-                  fieldType={field.fieldType as FieldType}
-                  value={field.textValue}
-                  confidence={field.confidence}
-                  cropDataUrl={field.cropDataUrl}
-                  onValueChange={(v) => void handleValueChange(field.id!, v)}
-                  onAccept={() => handleAccept(field.id!)}
-                  accepted={accepted.has(field.id!)}
-                />
+                  ref={(el) => {
+                    if (el && field.id !== undefined) cardRefs.current.set(field.id, el);
+                  }}
+                  onClick={() => field.id !== undefined && setSelectedFieldId(field.id)}
+                  className={field.id === selectedFieldId ? 'ring-2 ring-primary rounded-xl' : ''}
+                >
+                  <FieldCard
+                    fieldId={field.fieldId}
+                    labelEn={field.labelEn}
+                    labelKn={field.labelKn}
+                    fieldType={field.fieldType as FieldType}
+                    value={field.textValue}
+                    confidence={field.confidence}
+                    cropDataUrl={field.cropDataUrl}
+                    onValueChange={(v) => void handleValueChange(field.id!, v)}
+                    onAccept={() => handleAccept(field.id!)}
+                    accepted={accepted.has(field.id!)}
+                  />
+                </div>
               ))}
             </div>
           </section>
@@ -171,19 +318,27 @@ function ReviewPage() {
             )}
             <div className="space-y-3">
               {others.map((field) => (
-                <FieldCard
+                <div
                   key={field.id}
-                  fieldId={field.fieldId}
-                  labelEn={field.labelEn}
-                  labelKn={field.labelKn}
-                  fieldType={field.fieldType as FieldType}
-                  value={field.textValue}
-                  confidence={field.confidence}
-                  cropDataUrl={field.cropDataUrl}
-                  onValueChange={(v) => void handleValueChange(field.id!, v)}
-                  onAccept={() => handleAccept(field.id!)}
-                  accepted={accepted.has(field.id!)}
-                />
+                  ref={(el) => {
+                    if (el && field.id !== undefined) cardRefs.current.set(field.id, el);
+                  }}
+                  onClick={() => field.id !== undefined && setSelectedFieldId(field.id)}
+                  className={field.id === selectedFieldId ? 'ring-2 ring-primary rounded-xl' : ''}
+                >
+                  <FieldCard
+                    fieldId={field.fieldId}
+                    labelEn={field.labelEn}
+                    labelKn={field.labelKn}
+                    fieldType={field.fieldType as FieldType}
+                    value={field.textValue}
+                    confidence={field.confidence}
+                    cropDataUrl={field.cropDataUrl}
+                    onValueChange={(v) => void handleValueChange(field.id!, v)}
+                    onAccept={() => handleAccept(field.id!)}
+                    accepted={accepted.has(field.id!)}
+                  />
+                </div>
               ))}
             </div>
           </section>
