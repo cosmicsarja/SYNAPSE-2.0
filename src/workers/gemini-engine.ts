@@ -14,7 +14,7 @@ import {
   type OcrLine,
 } from '@/workers/tesseract-engine';
 
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 const MAX_UPLOAD_SIDE = 1600;
 
 export function hasEnvGeminiKey(): boolean {
@@ -28,8 +28,9 @@ export async function getGeminiConfig(): Promise<{ apiKey: string; model: string
   const apiKey = (savedKey && savedKey.trim()) || envKey.trim();
 
   const savedModel = await getSetting<string>('gemini_model', '');
+  const cleanSavedModel = savedModel && savedModel.trim() !== 'gemini-2.5-flash' ? savedModel.trim() : '';
   const envModel = (import.meta.env.VITE_GEMINI_MODEL as string | undefined) ?? '';
-  const model = (savedModel && savedModel.trim()) || envModel.trim() || DEFAULT_GEMINI_MODEL;
+  const model = cleanSavedModel || envModel.trim() || DEFAULT_GEMINI_MODEL;
 
   return { apiKey, model };
 }
