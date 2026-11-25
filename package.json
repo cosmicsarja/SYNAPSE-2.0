@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node -e \"const fs=require('fs'),p=require('path');['sw.js',...fs.readdirSync('dist').filter(f=>f.startsWith('workbox'))].forEach(f=>{try{fs.copyFileSync(p.join('dist',f),p.join('dist/client',f));console.log('copied',f);}catch(e){}})\"",
+    "build": "vite build && node scripts/generate-index.mjs && node -e \"const fs=require('fs'),p=require('path');['sw.js',...fs.readdirSync('dist').filter(f=>f.startsWith('workbox'))].forEach(f=>{try{fs.copyFileSync(p.join('dist',f),p.join('dist/client',f));console.log('copied',f);}catch(e){}})\"",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
