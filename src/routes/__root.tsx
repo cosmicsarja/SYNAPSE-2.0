@@ -8,7 +8,7 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -75,27 +75,26 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
-    // Replace these placeholders with the app's name and description when first building the app.
-    // Each content route, / included, must still set its own head(). Never add og:image or
-    // twitter:image here: every page without its own would inherit the root's preview image.
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { title: "FormLens" },
+      { name: "description", content: "Offline-first PWA for scanning Kannada and English government forms with on-device AI." },
+      { name: "author", content: "FormLens" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "apple-mobile-web-app-title", content: "FormLens" },
+      { name: "theme-color", content: "#1e3a5f" },
+      { property: "og:title", content: "FormLens" },
+      { property: "og:description", content: "Offline form scanner for Kannada and English government forms." },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
+      { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icons/icon-192.svg" },
     ],
   }),
   shellComponent: RootShell,
@@ -118,13 +117,61 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Toast shown when a new SW version is available */
+function UpdateToast({ onUpdate }: { onUpdate: () => void }) {
+  return (
+    <div className="fixed bottom-20 left-4 right-4 z-50 rounded-xl border border-primary/30 bg-primary text-primary-foreground shadow-lg p-3 flex items-center justify-between gap-3">
+      <span className="text-sm">New version available</span>
+      <button
+        onClick={onUpdate}
+        className="shrink-0 text-sm font-semibold underline"
+      >
+        Update
+      </button>
+    </div>
+  );
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const [showUpdateToast, setShowUpdateToast] = useState(false);
+  const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
+
+  // Register service worker and listen for updates
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    // Don't register in Lovable preview iframes
+    if (window.parent !== window) return;
+
+    navigator.serviceWorker.register("/sw.js").then((reg) => {
+      setRegistration(reg);
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        newWorker?.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            setShowUpdateToast(true);
+          }
+        });
+      });
+    }).catch(() => {/* SW not available in this environment */});
+
+    // Trigger sync when app comes online
+    window.addEventListener("online", () => {
+      import("../lib/formlens/syncQueue").then(({ triggerSync }) => triggerSync());
+    });
+  }, []);
+
+  const handleUpdate = () => {
+    registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
+    setShowUpdateToast(false);
+    window.location.reload();
+  };
 
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
+      {showUpdateToast && <UpdateToast onUpdate={handleUpdate} />}
     </QueryClientProvider>
   );
 }

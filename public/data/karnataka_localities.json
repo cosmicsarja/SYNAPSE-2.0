@@ -1,0 +1,61 @@
+{
+  "districts": [
+    {
+      "name": "Bengaluru Urban",
+      "kannada": "ಬೆಂಗಳೂರು ನಗರ",
+      "taluks": [
+        { "name": "Bengaluru North", "kannada": "ಬೆಂಗಳೂರು ಉತ್ತರ", "villages": ["Hebbal", "Yelahanka", "Jakkur", "Devanahalli"] },
+        { "name": "Bengaluru South", "kannada": "ಬೆಂಗಳೂರು ದಕ್ಷಿಣ", "villages": ["Jayanagar", "JP Nagar", "Bannerghatta"] },
+        { "name": "Bengaluru East", "kannada": "ಬೆಂಗಳೂರು ಪೂರ್ವ", "villages": ["Whitefield", "Marathahalli", "KR Puram"] }
+      ]
+    },
+    {
+      "name": "Mysuru",
+      "kannada": "ಮೈಸೂರು",
+      "taluks": [
+        { "name": "Mysuru", "kannada": "ಮೈಸೂರು", "villages": ["Jayapura", "Nanjangud", "Hunsur"] },
+        { "name": "Nanjangud", "kannada": "ನಂಜನಗೂಡು", "villages": ["Nanjangud Town", "Heggadadevanakote"] }
+      ]
+    },
+    {
+      "name": "Dharwad",
+      "kannada": "ಧಾರವಾಡ",
+      "taluks": [
+        { "name": "Dharwad", "kannada": "ಧಾರವಾಡ", "villages": ["Hubli", "Dharwad", "Alnavar"] },
+        { "name": "Hubli", "kannada": "ಹುಬ್ಬಳ್ಳಿ", "villages": ["Hubli City", "Tarihal", "Gabbur"] }
+      ]
+    },
+    {
+      "name": "Belagavi",
+      "kannada": "ಬೆಳಗಾವಿ",
+      "taluks": [
+        { "name": "Belagavi", "kannada": "ಬೆಳಗಾವಿ", "villages": ["Belagavi City", "Hukeri", "Raibag"] },
+        { "name": "Chikkodi", "kannada": "ಚಿಕ್ಕೋಡಿ", "villages": ["Chikkodi", "Nippani", "Athani"] }
+      ]
+    },
+    {
+      "name": "Tumakuru",
+      "kannada": "ತುಮಕೂರು",
+      "taluks": [
+        { "name": "Tumakuru", "kannada": "ತುಮಕೂರು", "villages": ["Tumakuru City", "Tiptur", "Madhugiri"] },
+        { "name": "Chikkanayakanahalli", "kannada": "ಚಿಕ್ಕನಾಯಕನಹಳ್ಳಿ", "villages": ["Chikkanayakanahalli", "Koratagere"] }
+      ]
+    },
+    {
+      "name": "Shivamogga",
+      "kannada": "ಶಿವಮೊಗ್ಗ",
+      "taluks": [
+        { "name": "Shivamogga", "kannada": "ಶಿವಮೊಗ್ಗ", "villages": ["Shivamogga City", "Bhadravati", "Sagar"] }
+      ]
+    },
+    {
+      "name": "Dakshina Kannada",
+      "kannada": "ದಕ್ಷಿಣ ಕನ್ನಡ",
+      "taluks": [
+        { "name": "Mangaluru", "kannada": "ಮಂಗಳೂರು", "villages": ["Mangaluru City", "Surathkal", "Mulki"] },
+        { "name": "Bantwal", "kannada": "ಬಂಟ್ವಾಳ", "villages": ["Bantwal", "Vitla", "Sullia"] }
+      ]
+    }
+  ]
+}
+

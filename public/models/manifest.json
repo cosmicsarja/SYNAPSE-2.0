@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "files": [
+    {
+      "name": "ocr_crnn_int8.onnx",
+      "url": "/models/ocr_crnn_int8.onnx",
+      "size": 1,
+      "description": "OCR CRNN model (INT8 quantized) — placeholder until trained model is available"
+    },
+    {
+      "name": "charset.json",
+      "url": "/models/charset.json",
+      "size": 512,
+      "description": "CTC character set for Kannada + English"
+    },
+    {
+      "name": "karnataka_localities.json",
+      "url": "/data/karnataka_localities.json",
+      "size": 10240,
+      "description": "Karnataka district/taluk/village locality dictionary"
+    }
+  ]
+}
+

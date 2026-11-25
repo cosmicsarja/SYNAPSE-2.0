@@ -1,0 +1,72 @@
+{
+  "id": "ration-card",
+  "name": "Ration Card Application",
+  "nameKannada": "ಪಡಿತರ ಚೀಟಿ ಅರ್ಜಿ",
+  "version": "1.0",
+  "fields": [
+    {
+      "id": "applicant_name",
+      "labelEn": "Applicant Name",
+      "labelKn": "ಅರ್ಜಿದಾರರ ಹೆಸರು",
+      "type": "name",
+      "bbox": { "x": 10, "y": 15, "w": 80, "h": 6 }
+    },
+    {
+      "id": "dob",
+      "labelEn": "Date of Birth",
+      "labelKn": "ಜನ್ಮ ದಿನಾಂಕ",
+      "type": "date",
+      "bbox": { "x": 10, "y": 24, "w": 40, "h": 6 }
+    },
+    {
+      "id": "phone",
+      "labelEn": "Mobile Number",
+      "labelKn": "ಮೊಬೈಲ್ ಸಂಖ್ಯೆ",
+      "type": "phone",
+      "bbox": { "x": 55, "y": 24, "w": 35, "h": 6 }
+    },
+    {
+      "id": "district",
+      "labelEn": "District",
+      "labelKn": "ಜಿಲ್ಲೆ",
+      "type": "text",
+      "bbox": { "x": 10, "y": 33, "w": 40, "h": 6 }
+    },
+    {
+      "id": "taluk",
+      "labelEn": "Taluk",
+      "labelKn": "ತಾಲ್ಲೂಕು",
+      "type": "text",
+      "bbox": { "x": 55, "y": 33, "w": 35, "h": 6 }
+    },
+    {
+      "id": "village",
+      "labelEn": "Village/Town",
+      "labelKn": "ಗ್ರಾಮ/ಪಟ್ಟಣ",
+      "type": "text",
+      "bbox": { "x": 10, "y": 42, "w": 40, "h": 6 }
+    },
+    {
+      "id": "pincode",
+      "labelEn": "Pincode",
+      "labelKn": "ಅಂಚೆ ಸಂಖ್ಯೆ",
+      "type": "number",
+      "bbox": { "x": 55, "y": 42, "w": 35, "h": 6 }
+    },
+    {
+      "id": "family_members",
+      "labelEn": "Number of Family Members",
+      "labelKn": "ಕುಟುಂಬ ಸದಸ್ಯರ ಸಂಖ್ಯೆ",
+      "type": "number",
+      "bbox": { "x": 10, "y": 51, "w": 40, "h": 6 }
+    },
+    {
+      "id": "bpl_card",
+      "labelEn": "BPL Card Holder",
+      "labelKn": "ಬಿಪಿಎಲ್ ಕಾರ್ಡ್ ಹೊಂದಿದ್ದೀರಾ",
+      "type": "checkbox",
+      "bbox": { "x": 55, "y": 51, "w": 10, "h": 6 }
+    }
+  ]
+}
+

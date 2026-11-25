@@ -1,24 +1,149 @@
-# Screenshot Match
+# FormLens
 
-Implement exactly the screenshot and nothing else
+**Offline-first PWA for scanning and digitizing handwritten Kannada + English government forms with on-device AI.**
 
-This project was built with [Lovable](https://lovable.dev).
+> All recognition runs on-device. No form data is sent anywhere without your explicit sign-in.
 
-## Build with Lovable
+---
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/a3bab2d3-59e4-411c-ae67-756082ee8da2).
+## Quick Start
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+```bash
+npm install --legacy-peer-deps
+npm run dev          # development
+npm run build        # production build
+npm run preview      # preview production build
 ```
+
+---
+
+## Architecture
+
+```
+src/
+  config/model.ts          ← Model contract (shape, paths, preprocessing)
+  db/schema.ts             ← Dexie (IndexedDB) schema + helpers
+  workers/
+    ocr.worker.ts          ← Web Worker entry (message protocol)
+    mock-engine.ts         ← MockOcrEngine (demo mode, no model needed)
+    onnx-engine.ts         ← OnnxOcrEngine (onnxruntime-web + CTC decode)
+  hooks/formlens/          ← React hooks (offline status, install prompt, OCR worker)
+  components/formlens/     ← UI components (FieldCard, CameraCapture, etc.)
+  lib/formlens/            ← Pure logic (validators, fuzzySnap, exports, sync)
+  routes/
+    index.tsx              ← Redirect based on setup state
+    setup.tsx              ← First-run pack download screen
+    scan.tsx               ← Camera + template + OCR dispatch
+    review.$id.tsx         ← Field-by-field review and edit
+    forms.tsx              ← Saved forms list
+    settings.tsx           ← Settings, storage, engine, language, auth
+public/
+  manifest.webmanifest     ← PWA manifest
+  icons/                   ← SVG icons (192, 512)
+  models/
+    manifest.json          ← Pack file list (name, url, size, version)
+    ocr_crnn_int8.onnx     ← PLACEHOLDER — replace with trained model
+    charset.json           ← CTC character set (array of strings)
+  ort/                     ← ONNX Runtime WASM files (served locally, not CDN)
+  data/
+    karnataka_localities.json ← District/taluk/village dictionary
+  templates/
+    ration-card.json       ← Ration card template
+    income-certificate.json ← Income certificate template
+supabase/
+  migrations/
+    0001_formlens_tables.sql ← Forms + form_fields tables with RLS
+```
+
+---
+
+## Model Contract
+
+**Input tensor:**
+- Name: `input`
+- dtype: `float32`
+- Shape: `[1, 1, 32, W]` — batch=1, channels=1 (grayscale), height=32px fixed, width=variable
+- Range: `[0.0, 1.0]` — `pixel / 255.0`, no further normalization
+
+**Output tensor:**
+- Name: `output` (or first output)
+- Shape: `[T, 1, C]` or `[1, T, C]` — T=time steps, C=num_classes
+- CTC blank index: **0**
+- Characters: `/public/models/charset.json` (array of strings, index = class ID)
+
+**Preprocessing pipeline** (implemented in `src/workers/onnx-engine.ts → preprocessImage`):
+1. Crop `ImageData` to field bounding box
+2. Convert to grayscale: `gray = 0.299·R + 0.587·G + 0.114·B`
+3. Resize height to 32px, preserve aspect ratio
+4. Normalize: `float_pixel = pixel / 255.0`
+5. Pad width to `MODEL_CONFIG.MAX_WIDTH` if needed (pad value = 1.0 = white)
+6. Layout as `[1, 1, 32, W]` float32 tensor
+
+**To plug in a trained model:**
+1. Replace `public/models/ocr_crnn_int8.onnx` with the real model
+2. Verify `manifest.json` file size is correct
+3. Check actual tensor names with [Netron](https://netron.app/) and update TODOs in `src/workers/onnx-engine.ts`
+4. Update `charset.json` if the character set changed
+
+---
+
+## Form Templates
+
+Templates are JSON files in `/public/templates/`. Each field has:
+
+```json
+{
+  "id": "field_id",
+  "labelEn": "English label",
+  "labelKn": "ಕನ್ನಡ ಲೇಬಲ್",
+  "type": "text | name | date | phone | number | checkbox",
+  "bbox": { "x": 10, "y": 20, "w": 80, "h": 6 }
+}
+```
+
+`bbox` values are **percentages of the page dimensions** (0–100). Add more templates to `/public/templates/` and they appear automatically in the template picker.
+
+---
+
+## Supabase Setup (optional)
+
+1. Create a Supabase project at [supabase.com](https://supabase.com)
+2. Run the migration:
+   ```bash
+   supabase db push  # or paste supabase/migrations/0001_formlens_tables.sql in SQL Editor
+   ```
+3. Create a private storage bucket named `form-images`
+4. Add to `.env`:
+   ```
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+   ```
+5. Sign in via Settings → Sign In (Magic Link)
+
+The app works fully offline without Supabase. Forms are queued in IndexedDB and sync automatically when you go online and are signed in.
+
+---
+
+## PWA / Offline Behavior
+
+- **Service Worker**: Generated by `vite-plugin-pwa` with Workbox. Precaches all JS/CSS assets.
+- **Model files**: Cached by the Setup screen's `packDownloader.ts` into the `formlens-offline-pack-v1` Cache Storage bucket.
+- **WASM**: Served from `/ort/` (never from a CDN). Cached by the SW's runtime cache.
+- **IndexedDB**: All form data stored with Dexie. Never uses `localStorage` for forms.
+- **Install prompt**: Captured via `beforeinstallprompt`. iOS shows "Add to Home Screen" instructions.
+- **Update prompt**: SW `updatefound` event shows a toast; updates only on tap.
+
+---
+
+## Development Notes
+
+- **OCR engine**: Default is `mock` (returns demo data). Switch to `onnx` in Settings once a real model file is present.
+- **OpenCV.js**: Auto-perspective correction is a TODO. Current implementation uses a manual 4-corner crop UI.
+- **TypeScript**: Strict mode. `noUncheckedIndexedAccess` is enabled — always bounds-check array access.
+- **Package manager**: Project uses `bun.lock` but can be installed with `npm install --legacy-peer-deps` on systems without Bun.
+
+---
+
+## Verification Results
+
+See `VERIFICATION.md` for the full verification report.
