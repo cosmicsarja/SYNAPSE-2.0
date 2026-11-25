@@ -181,3 +181,4 @@ export function InstallBanner({ variant = "banner", className }: Props) {
     </div>
   );
 }
+

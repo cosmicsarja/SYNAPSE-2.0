@@ -118,3 +118,4 @@ Generated: 2026-11-25
 |---|---|
 | `7634445` | feat: FormLens complete implementation (53 files) |
 | `1d42836` | feat: PWA installability — InstallBanner, /install page, vercel.json, TWA docs, PNG icons |
+

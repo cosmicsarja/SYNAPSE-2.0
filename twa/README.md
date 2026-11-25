@@ -135,3 +135,4 @@ curl https://<your-vercel-domain>/.well-known/assetlinks.json
 ```
 
 Google's validator: <https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://<your-vercel-domain>&relation=delegate_permission/common.handle_all_urls>
+

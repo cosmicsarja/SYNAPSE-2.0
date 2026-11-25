@@ -18,3 +18,4 @@ Then update the download link in `src/routes/install.tsx`:
 - Binary files bloat git history permanently
 - Signed APKs contain the app's digital signature — the keystore must stay secret
 - GitHub Releases provides versioning, download counts, and CDN delivery
+
