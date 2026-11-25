@@ -3,7 +3,7 @@
  * offline PP-OCR detection + Kannada/English recognition, and Lens highlight overlay.
  */
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { CameraCapture } from '@/components/formlens/CameraCapture';
@@ -12,15 +12,22 @@ import { LensOverlay } from '@/components/formlens/LensOverlay';
 import { BottomNav } from '@/components/formlens/BottomNav';
 import { OfflineStatusBar } from '@/components/formlens/OfflineStatusBar';
 import { useOcrWorker } from '@/hooks/formlens/useOcrWorker';
-import { getSetting, setSetting, saveFormWithFields } from '@/db';
-import type { FormField, OcrEngine, ScanMode } from '@/db/schema';
+import {
+  getSetting,
+  setSetting,
+  enqueueBatchItem,
+  getBatchQueue,
+  updateBatchItem,
+  deleteBatchItem,
+  resetStuckReadingBatchItems,
+} from '@/db';
+import type { BatchQueueItem, OcrEngine, ScanMode } from '@/db/schema';
 import type { OcrLine, OcrLangMode } from '@/workers/tesseract-engine';
 import type { PipelineTimings, RecognizedBoxResult } from '@/workers/pipeline/paddle-engine';
 import {
-  assignBoxesToTemplateFields,
-  pairLabelsAndValues,
-  type TemplateFieldDef,
-} from '@/lib/formlens/boxAssignment';
+  saveScannedForm,
+  dataUrlToImageData,
+} from '@/lib/formlens/saveScannedForm';
 import {
   assessImageQuality,
   getQualityWarningMessages,
@@ -34,32 +41,7 @@ export const Route = createFileRoute('/scan')({
 });
 
 type ScanStep = 'camera' | 'quality-warning' | 'crop' | 'processing' | 'lens';
-
-interface TemplateJson {
-  id: string;
-  name: string;
-  fields: TemplateFieldDef[];
-}
-
-function inferFieldType(text: string): string {
-  const digits = text.replace(/[\s\-()]/g, '');
-  if (/(?:\+91)?[6-9]\d{9}/.test(digits)) return 'phone';
-  if (/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/.test(text)) return 'date';
-  if (/^\d[\d,.\s]*$/.test(text.trim())) return 'number';
-  return 'text';
-}
-
-function cropBoxUrl(srcCanvas: HTMLCanvasElement, bbox: { x0: number; y0: number; x1: number; y1: number }): string {
-  const x = Math.max(0, Math.floor(bbox.x0) - 4);
-  const y = Math.max(0, Math.floor(bbox.y0) - 4);
-  const w = Math.max(1, Math.min(srcCanvas.width - x, Math.ceil(bbox.x1) - x + 4));
-  const h = Math.max(1, Math.min(srcCanvas.height - y, Math.ceil(bbox.y1) - y + 4));
-  const out = document.createElement('canvas');
-  out.width = w;
-  out.height = h;
-  out.getContext('2d')!.drawImage(srcCanvas, x, y, w, h, 0, 0, w, h);
-  return out.toDataURL('image/jpeg', 0.78);
-}
+type CaptureMode = 'single' | 'batch';
 
 function ScanPage() {
   const navigate = useNavigate();
@@ -84,11 +66,122 @@ function ScanPage() {
   const [qualityReport, setQualityReport] = useState<ImageQualityReport | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Restore persisted scan mode & template choice from Dexie
+  const [captureMode, setCaptureMode] = useState<CaptureMode>('single');
+  const [batchQueue, setBatchQueue] = useState<BatchQueueItem[]>([]);
+  const [batchStageMsg, setBatchStageMsg] = useState<string>('');
+  const batchProcessingRef = useRef(false);
+
+  const refreshBatchQueue = useCallback(async () => {
+    const items = await getBatchQueue();
+    setBatchQueue(items);
+    return items;
+  }, []);
+
+  const processBatchQueue = useCallback(async () => {
+    if (batchProcessingRef.current) return;
+    batchProcessingRef.current = true;
+    try {
+      while (true) {
+        const items = await getBatchQueue();
+        setBatchQueue(items);
+        const next = items.find((it) => it.status === 'queued');
+        if (!next || next.id === undefined) break;
+
+        await updateBatchItem(next.id, { status: 'reading' });
+        await refreshBatchQueue();
+        setBatchStageMsg(`Reading page #${next.id}…`);
+
+        try {
+          const imgData = await dataUrlToImageData(next.imageDataUrl);
+          const engine = await getSetting<OcrEngine>('ocr_engine', 'paddle');
+          await initialize(engine, next.langMode);
+
+          let boxes: Array<{
+            bbox: { x0: number; y0: number; x1: number; y1: number };
+            text: string;
+            confidence: number;
+            script?: 'kn' | 'en' | 'mixed';
+            model?: string;
+          }> = [];
+          let itemTimings: PipelineTimings | null = null;
+
+          if (engine === 'paddle') {
+            const maxSide = await getSetting<number>('det_max_side', 960);
+            const out = await runPaddlePipeline(imgData, next.langMode, maxSide, (stage) => {
+              setBatchStageMsg(`#${next.id}: ${stage}`);
+            });
+            itemTimings = out.timings;
+            boxes = out.results.map((r) => ({
+              bbox: r.box.bbox,
+              text: r.text,
+              confidence: r.confidence,
+              script: r.script,
+              model: r.model,
+            }));
+          } else if (engine === 'tesseract' || engine === 'cloud') {
+            const res = await recognizeFullPage(imgData, next.langMode);
+            boxes = res.lines.map((l) => ({
+              bbox: l.bbox,
+              text: l.text,
+              confidence: l.confidence,
+              script: l.language === 'kn' ? 'kn' : l.language === 'mixed' ? 'mixed' : 'en',
+              model: engine,
+            }));
+          } else {
+            const res = await recognize({
+              imageData: imgData,
+              fieldType: 'text',
+              fieldIndex: 0,
+              totalFields: 1,
+            });
+            boxes = res.text
+              ? [{
+                  bbox: { x0: 10, y0: 10, x1: imgData.width - 10, y1: Math.min(imgData.height - 10, 80) },
+                  text: res.text,
+                  confidence: res.confidence,
+                  script: 'en',
+                  model: engine,
+                }]
+              : [];
+          }
+
+          const formId = await saveScannedForm({
+            imageData: imgData,
+            imageDataUrl: next.imageDataUrl,
+            boxes,
+            scanMode: next.scanMode,
+            selectedTemplateId: next.templateId,
+            timings: itemTimings,
+          });
+
+          await updateBatchItem(next.id, { status: 'ready', formId });
+        } catch (err) {
+          await updateBatchItem(next.id, {
+            status: 'failed',
+            error: err instanceof Error ? err.message : 'Batch OCR failed',
+          });
+        }
+        await refreshBatchQueue();
+      }
+    } finally {
+      batchProcessingRef.current = false;
+      setBatchStageMsg('');
+    }
+  }, [initialize, recognize, recognizeFullPage, refreshBatchQueue, runPaddlePipeline]);
+
+  // Restore persisted scan mode, template choice & batch queue from Dexie (survives restarts)
   useEffect(() => {
     void getSetting<ScanMode>('scan_mode', 'auto').then(setScanMode);
     void getSetting<string>('selected_template', 'ration-card').then(setSelectedTemplateId);
-  }, []);
+    void getSetting<CaptureMode>('capture_mode', 'single').then(setCaptureMode);
+    void resetStuckReadingBatchItems()
+      .then(() => refreshBatchQueue())
+      .then((items) => {
+        if (items.some((it) => it.status === 'queued')) {
+          void processBatchQueue();
+        }
+      });
+  }, [processBatchQueue, refreshBatchQueue]);
 
   const handleModeChange = (mode: ScanMode) => {
     setScanMode(mode);
@@ -167,6 +260,20 @@ function ScanPage() {
   }, [initialize, recognize, recognizeFullPage, runPaddlePipeline, langMode]);
 
   const handleCapture = useCallback((imageData: ImageData, dataUrl: string) => {
+    if (captureMode === 'batch') {
+      void enqueueBatchItem({
+        imageDataUrl: dataUrl,
+        width: imageData.width,
+        height: imageData.height,
+        scanMode,
+        templateId: selectedTemplateId,
+        langMode,
+      })
+        .then(() => refreshBatchQueue())
+        .then(() => processBatchQueue());
+      return;
+    }
+
     setCapturedImageData(imageData);
     setCapturedDataUrl(dataUrl);
     setOcrError(null);
@@ -179,7 +286,7 @@ function ScanPage() {
     setQualityReport(null);
     // Auto-trigger detection immediately — skip the manual crop step
     void runLensOcr(imageData, dataUrl);
-  }, [runLensOcr]);
+  }, [captureMode, langMode, processBatchQueue, refreshBatchQueue, runLensOcr, scanMode, selectedTemplateId]);
 
   const handleSkipCrop = useCallback(() => {
     if (!capturedImageData || !capturedDataUrl) return;
@@ -190,12 +297,7 @@ function ScanPage() {
     if (!lensImageData || !lensImageUrl) return;
     setSaving(true);
     try {
-      const srcCanvas = document.createElement('canvas');
-      srcCanvas.width = lensImageData.width;
-      srcCanvas.height = lensImageData.height;
-      srcCanvas.getContext('2d')!.putImageData(lensImageData, 0, 0);
-
-      const positionedBoxes = (paddleBoxes ?? lines.map((l) => ({
+      const boxes = (paddleBoxes ?? lines.map((l) => ({
         box: { bbox: l.bbox },
         text: l.text,
         confidence: l.confidence,
@@ -207,97 +309,16 @@ function ScanPage() {
         confidence: item.confidence,
         script: item.script,
         model: item.model,
-        cropDataUrl: cropBoxUrl(srcCanvas, item.box.bbox),
       }));
 
-      let fields: Omit<FormField, 'id' | 'formId'>[] = [];
-      let templateId = 'auto-extract';
-      let templateName = 'Auto Detect (Kannada + English)';
-
-      if (scanMode === 'template') {
-        const tplRes = await fetch(`/templates/${selectedTemplateId}.json`);
-        if (!tplRes.ok) throw new Error(`Template /templates/${selectedTemplateId}.json not found`);
-        const tpl = (await tplRes.json()) as TemplateJson;
-        templateId = tpl.id;
-        templateName = tpl.name;
-        const assigned = assignBoxesToTemplateFields(
-          positionedBoxes,
-          tpl.fields,
-          lensImageData.width,
-          lensImageData.height,
-        );
-        fields = assigned.map((a) => ({
-          fieldId: a.fieldId,
-          labelEn: a.labelEn,
-          labelKn: a.labelKn,
-          fieldType: a.fieldType,
-          textValue: a.textValue,
-          originalText: a.originalText,
-          confidence: a.confidence,
-          wasEdited: false,
-          normBbox: a.normBbox,
-          category: 'template',
-          cropDataUrl: a.boxIndices[0] !== undefined ? positionedBoxes[a.boxIndices[0]]?.cropDataUrl : undefined,
-        }));
-      } else {
-        // Load known labels from both government templates for fuzzy label/value pairing
-        const knownLabels: Array<{ id: string; labelEn: string; labelKn: string }> = [];
-        for (const tid of ['ration-card', 'income-certificate']) {
-          try {
-            const res = await fetch(`/templates/${tid}.json`);
-            if (res.ok) {
-              const tpl = (await res.json()) as TemplateJson;
-              for (const f of tpl.fields) {
-                knownLabels.push({ id: f.id, labelEn: f.labelEn, labelKn: f.labelKn });
-              }
-            }
-          } catch { /* ignore if offline and not cached */ }
-        }
-        const paired = pairLabelsAndValues(
-          positionedBoxes,
-          knownLabels,
-          lensImageData.width,
-          lensImageData.height,
-        );
-        fields = paired.map((p) => ({
-          fieldId: p.fieldId,
-          labelEn: p.labelEn,
-          labelKn: p.labelKn,
-          fieldType: inferFieldType(p.textValue),
-          textValue: p.textValue,
-          originalText: p.originalText,
-          confidence: p.confidence,
-          wasEdited: false,
-          normBbox: p.normBbox,
-          script: p.script,
-          model: p.model,
-          category: p.kind,
-          cropDataUrl: p.cropDataUrl,
-        }));
-      }
-
-      const avgConfidence =
-        fields.length > 0
-          ? fields.reduce((s, f) => s + f.confidence, 0) / fields.length
-          : 0;
-
-      const formId = await saveFormWithFields(
-        {
-          templateId,
-          templateName,
-          status: 'draft',
-          avgConfidence,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          thumbnailDataUrl: lensImageUrl,
-          imageDataUrl: lensImageUrl,
-          imageWidth: lensImageData.width,
-          imageHeight: lensImageData.height,
-          scanMode,
-          timingsJson: timings ? JSON.stringify(timings) : undefined,
-        },
-        fields,
-      );
+      const formId = await saveScannedForm({
+        imageData: lensImageData,
+        imageDataUrl: lensImageUrl,
+        boxes,
+        scanMode,
+        selectedTemplateId,
+        timings,
+      });
 
       void navigate({ to: '/review/$id', params: { id: String(formId) } });
     } finally {
@@ -323,13 +344,206 @@ function ScanPage() {
     <div className="flex h-screen flex-col bg-background">
       <OfflineStatusBar />
 
-      {/* Step 1: Camera / Upload */}
+      {/* Step 1: Camera / Upload + Single/Batch Mode */}
       {step === 'camera' && (
-        <div className="flex-1 relative min-h-0 pb-16">
-          <CameraCapture
-            onCapture={handleCapture}
-            onCancel={resetToCamera}
-          />
+        <div className="flex-1 relative flex flex-col min-h-0 pb-16">
+          {/* Top mode & template bar */}
+          <div className="bg-black/95 px-3 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-white/10">
+            <div className="flex rounded bg-white/10 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setCaptureMode('single');
+                  void setSetting('capture_mode', 'single');
+                }}
+                className={`rounded px-2.5 py-1 font-medium ${
+                  captureMode === 'single' ? 'bg-primary text-primary-foreground' : 'text-white/80'
+                }`}
+              >
+                Single
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCaptureMode('batch');
+                  void setSetting('capture_mode', 'batch');
+                }}
+                className={`rounded px-2.5 py-1 font-medium ${
+                  captureMode === 'batch' ? 'bg-primary text-primary-foreground' : 'text-white/80'
+                }`}
+              >
+                Batch {batchQueue.length > 0 ? `(${batchQueue.length})` : ''}
+              </button>
+            </div>
+
+            {captureMode === 'batch' && (
+              <div className="flex items-center gap-1.5">
+                <div className="flex rounded bg-white/10 p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => handleModeChange('auto')}
+                    className={`rounded px-2 py-0.5 font-medium ${
+                      scanMode === 'auto' ? 'bg-white text-black' : 'text-white/80'
+                    }`}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleModeChange('template')}
+                    className={`rounded px-2 py-0.5 font-medium ${
+                      scanMode === 'template' ? 'bg-white text-black' : 'text-white/80'
+                    }`}
+                  >
+                    Template
+                  </button>
+                </div>
+                {scanMode === 'template' && (
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(e) => handleTemplateChange(e.target.value)}
+                    className="rounded bg-white/15 text-white text-xs px-2 py-1 border border-white/20"
+                  >
+                    <option value="ration-card" className="text-black">Ration Card</option>
+                    <option value="income-certificate" className="text-black">Income Cert</option>
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 min-h-0 relative">
+            <CameraCapture
+              onCapture={handleCapture}
+              onCancel={resetToCamera}
+              batchMode={captureMode === 'batch'}
+              batchCount={batchQueue.filter((b) => b.status === 'queued' || b.status === 'reading').length}
+            />
+          </div>
+
+          {/* Batch Queue & Ready for Review panel */}
+          {captureMode === 'batch' && batchQueue.length > 0 && (
+            <div className="max-h-60 overflow-y-auto border-t bg-background px-3 py-2.5 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold">
+                  Batch Queue ({batchQueue.filter((i) => i.status === 'ready').length}/{batchQueue.length} ready)
+                </span>
+                {batchStageMsg && (
+                  <span className="text-primary font-medium truncate max-w-[55%]">{batchStageMsg}</span>
+                )}
+              </div>
+
+              {/* Progress list */}
+              <div className="space-y-1.5">
+                {batchQueue.map((item, idx) => (
+                  <div
+                    key={item.id ?? idx}
+                    className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <img
+                        src={item.imageDataUrl}
+                        alt={`Batch page ${idx + 1}`}
+                        className="h-8 w-8 rounded object-cover shrink-0 border"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">
+                          Page {idx + 1} · {item.scanMode === 'template' ? item.templateId : 'auto'}
+                        </div>
+                        {item.error && (
+                          <div className="text-[11px] text-red-600 truncate">{item.error}</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          item.status === 'ready'
+                            ? 'bg-green-100 text-green-800'
+                            : item.status === 'reading'
+                              ? 'bg-blue-100 text-blue-800'
+                              : item.status === 'failed'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {item.status}
+                      </span>
+                      {item.status === 'failed' && item.id !== undefined && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-[11px]"
+                          onClick={async () => {
+                            await updateBatchItem(item.id!, { status: 'queued', error: '' });
+                            await refreshBatchQueue();
+                            void processBatchQueue();
+                          }}
+                        >
+                          Retry
+                        </Button>
+                      )}
+                      {item.status !== 'reading' && item.id !== undefined && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-[11px] text-muted-foreground"
+                          onClick={async () => {
+                            await deleteBatchItem(item.id!);
+                            await refreshBatchQueue();
+                          }}
+                        >
+                          ×
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Ready for review list */}
+              {batchQueue.some((i) => i.status === 'ready' && i.formId !== undefined) && (
+                <div className="pt-1 border-t space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-green-700 dark:text-green-400">
+                      Ready for review
+                    </span>
+                    <button
+                      type="button"
+                      className="text-[11px] text-muted-foreground hover:underline"
+                      onClick={async () => {
+                        const readyIds = batchQueue
+                          .filter((i) => i.status === 'ready' && i.id !== undefined)
+                          .map((i) => i.id!);
+                        await Promise.all(readyIds.map((id) => deleteBatchItem(id)));
+                        await refreshBatchQueue();
+                      }}
+                    >
+                      Clear ready
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {batchQueue
+                      .filter((i) => i.status === 'ready' && i.formId !== undefined)
+                      .map((item, idx) => (
+                        <Button
+                          key={item.id ?? idx}
+                          size="sm"
+                          variant="secondary"
+                          className="h-7 text-xs"
+                          onClick={() =>
+                            void navigate({ to: '/review/$id', params: { id: String(item.formId!) } })
+                          }
+                        >
+                          Review Form #{item.formId} →
+                        </Button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <BottomNav />
         </div>
       )}

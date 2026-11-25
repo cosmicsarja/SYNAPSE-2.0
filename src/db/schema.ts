@@ -78,6 +78,23 @@ export interface CorrectionRecord {
   timestamp: number;
 }
 
+export type BatchQueueStatus = 'queued' | 'reading' | 'ready' | 'failed';
+
+export interface BatchQueueItem {
+  id?: number;
+  imageDataUrl: string;
+  width: number;
+  height: number;
+  scanMode: ScanMode;
+  templateId: string;
+  langMode: 'eng+kan' | 'eng' | 'kan';
+  status: BatchQueueStatus;
+  formId?: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ─── Database class ───────────────────────────────────────────────────────────
 
 export class FormLensDB extends Dexie {
@@ -86,6 +103,7 @@ export class FormLensDB extends Dexie {
   settings!: Table<AppSettings>;
   syncQueue!: Table<SyncQueueItem>;
   corrections!: Table<CorrectionRecord>;
+  batchQueue!: Table<BatchQueueItem>;
 
   constructor() {
     super('FormLensDB');
@@ -112,6 +130,16 @@ export class FormLensDB extends Dexie {
       settings:    'key',
       syncQueue:   '++id, formId, createdAt',
       corrections: '++id, formId, fieldName, templateId, timestamp, [formId+fieldName]',
+    });
+
+    // Non-destructive v4 migration for persistent batch scanning queue
+    this.version(4).stores({
+      forms:       '++id, templateId, status, createdAt, updatedAt, supabaseId, scanMode',
+      formFields:  '++id, formId, fieldId, category',
+      settings:    'key',
+      syncQueue:   '++id, formId, createdAt',
+      corrections: '++id, formId, fieldName, templateId, timestamp, [formId+fieldName]',
+      batchQueue:  '++id, status, createdAt, formId',
     });
   }
 }
@@ -214,5 +242,43 @@ export async function getAllCorrections(): Promise<CorrectionRecord[]> {
 
 export async function clearCorrections(): Promise<void> {
   await db.corrections.clear();
+}
+
+export async function enqueueBatchItem(
+  item: Omit<BatchQueueItem, 'id' | 'status' | 'createdAt' | 'updatedAt'>,
+): Promise<number> {
+  const now = Date.now();
+  const id = await db.batchQueue.add({
+    ...item,
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+  });
+  return id as number;
+}
+
+export async function getBatchQueue(): Promise<BatchQueueItem[]> {
+  return db.batchQueue.orderBy('createdAt').toArray();
+}
+
+export async function updateBatchItem(
+  id: number,
+  patch: Partial<Omit<BatchQueueItem, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.batchQueue.update(id, { ...patch, updatedAt: Date.now() });
+}
+
+export async function deleteBatchItem(id: number): Promise<void> {
+  await db.batchQueue.delete(id);
+}
+
+export async function resetStuckReadingBatchItems(): Promise<void> {
+  const stuck = await db.batchQueue.where('status').equals('reading').toArray();
+  const now = Date.now();
+  await Promise.all(
+    stuck
+      .filter((item) => item.id !== undefined)
+      .map((item) => db.batchQueue.update(item.id!, { status: 'queued', updatedAt: now })),
+  );
 }
 

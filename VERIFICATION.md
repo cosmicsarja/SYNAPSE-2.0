@@ -53,3 +53,11 @@
   - `npm run build`: exited `0`, generated `dist/client/sw.js` (58 precached files, 2.12 MB).
   - `npx vite preview --port 4176`: `/settings` and `/sw.js` returned HTTP 200; IndexedDB storage and JSZip export run 100% offline.
 - **Not verified in live browser here:** Interactive field edit on `/review/$id` + clicking "Export corrections dataset" / "Clear corrections" on `/settings` under DevTools Offline (no headless browser installed in this environment).
+
+## 7. Feature 3: Batch Scanning (Dexie Persistent Queue + Sequential Worker)
+- **Files added/updated:** `src/db/schema.ts`, `src/db/index.ts`, `src/lib/formlens/saveScannedForm.ts`, `src/components/formlens/CameraCapture.tsx`, `src/routes/scan.tsx`, `src/test/batch-queue.test.ts`
+- **Passed:**
+  - `npm test`: `src/test/batch-queue.test.ts` (2/2 passed: `inferFieldType` and interrupted `'reading'` -> `'queued'` restart recovery). Total: **5 test files, 14/14 tests passed**.
+  - `npm run build`: exited `0`, generated `dist/client/sw.js` (58 precached files, 2.13 MB).
+  - `npx vite preview --port 4177`: `/scan`, `/settings`, `/templates/ration-card.json`, and `/sw.js` returned HTTP 200; templates and models are precached/runtime-cached for offline sequential batch processing.
+- **Not verified in live browser here:** Multi-photo capture/upload + tab-reload mid-batch resume in Chrome DevTools Offline mode (no headless browser installed in this environment).

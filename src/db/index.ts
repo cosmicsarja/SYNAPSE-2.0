@@ -13,6 +13,11 @@ export {
   getCorrectionCount,
   getAllCorrections,
   clearCorrections,
+  enqueueBatchItem,
+  getBatchQueue,
+  updateBatchItem,
+  deleteBatchItem,
+  resetStuckReadingBatchItems,
 } from './schema';
 export type {
   SavedForm,
@@ -20,8 +25,11 @@ export type {
   AppSettings,
   SyncQueueItem,
   CorrectionRecord,
+  BatchQueueItem,
+  BatchQueueStatus,
   FormStatus,
   OcrEngine,
   AppLanguage,
+  ScanMode,
 } from './schema';
 

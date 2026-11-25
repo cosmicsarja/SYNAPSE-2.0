@@ -9,9 +9,11 @@ import { Camera, Upload, X } from 'lucide-react';
 interface Props {
   onCapture: (imageData: ImageData, dataUrl: string) => void;
   onCancel: () => void;
+  batchMode?: boolean;
+  batchCount?: number;
 }
 
-export function CameraCapture({ onCapture, onCancel }: Props) {
+export function CameraCapture({ onCapture, onCancel, batchMode = false, batchCount = 0 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [streaming, setStreaming] = useState(false);
@@ -55,28 +57,34 @@ export function CameraCapture({ onCapture, onCancel }: Props) {
     ctx.drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    stopCamera();
+    if (!batchMode) {
+      stopCamera();
+    }
     onCapture(imageData, dataUrl);
-  }, [onCapture, stopCamera]);
+  }, [batchMode, onCapture, stopCamera]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      URL.revokeObjectURL(url);
-      onCapture(imageData, dataUrl);
-    };
-    img.src = url;
-  }, [onCapture]);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    const toRead = batchMode ? files : [files[0]!];
+    for (const file of toRead) {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        URL.revokeObjectURL(url);
+        onCapture(imageData, dataUrl);
+      };
+      img.src = url;
+    }
+    e.target.value = '';
+  }, [batchMode, onCapture]);
 
   return (
     <div className="relative flex flex-col h-full bg-black">
@@ -96,8 +104,15 @@ export function CameraCapture({ onCapture, onCancel }: Props) {
               style={{ width: '88%', height: '75%', boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)' }}
             />
             <div className="absolute bottom-4 left-0 right-0 text-center text-white text-xs opacity-80">
-              Align the form within the frame
+              {batchMode
+                ? `Batch mode: tap shutter or upload multiple photos (${batchCount} in queue)`
+                : 'Align the form within the frame'}
             </div>
+          </div>
+        )}
+        {batchMode && batchCount > 0 && (
+          <div className="absolute top-3 right-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow">
+            {batchCount} queued
           </div>
         )}
         {error && (
@@ -121,7 +136,7 @@ export function CameraCapture({ onCapture, onCancel }: Props) {
           />
         )}
         <label className="cursor-pointer">
-          <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+          <input type="file" accept="image/*" multiple={batchMode} className="hidden" onChange={handleFileUpload} />
           <div className="text-white hover:text-white p-3 rounded-full hover:bg-white/10 flex items-center justify-center">
             <Upload className="h-6 w-6" />
           </div>
