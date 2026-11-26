@@ -14,7 +14,13 @@ import {
   type OcrLine,
 } from '@/workers/tesseract-engine';
 
-const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3-flash-preview';
+const FALLBACK_GEMINI_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest',
+] as const;
+const DEPRECATED_MODELS = new Set(['gemini-2.5-flash', 'gemini-3.8-flash']);
 const MAX_UPLOAD_SIDE = 1600;
 
 export function hasEnvGeminiKey(): boolean {
@@ -28,9 +34,12 @@ export async function getGeminiConfig(): Promise<{ apiKey: string; model: string
   const apiKey = (savedKey && savedKey.trim()) || envKey.trim();
 
   const savedModel = await getSetting<string>('gemini_model', '');
-  const cleanSavedModel = savedModel && savedModel.trim() !== 'gemini-2.5-flash' ? savedModel.trim() : '';
+  const cleanSavedModel =
+    savedModel && !DEPRECATED_MODELS.has(savedModel.trim()) ? savedModel.trim() : '';
   const envModel = (import.meta.env.VITE_GEMINI_MODEL as string | undefined) ?? '';
-  const model = cleanSavedModel || envModel.trim() || DEFAULT_GEMINI_MODEL;
+  const cleanEnvModel =
+    envModel && !DEPRECATED_MODELS.has(envModel.trim()) ? envModel.trim() : '';
+  const model = cleanSavedModel || cleanEnvModel || DEFAULT_GEMINI_MODEL;
 
   return { apiKey, model };
 }
@@ -211,42 +220,57 @@ export async function recognizeWithGemini(
     'where box_2d is the bounding box of the filled value (integers 0..1000).',
   ].join('\n');
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: 'image/jpeg',
-                data: base64Jpeg,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(`Gemini API HTTP ${res.status}: ${errText.slice(0, 200) || res.statusText}`);
-  }
-
-  const payload = (await res.json()) as {
+  const candidates = [model, ...FALLBACK_GEMINI_MODELS.filter((m) => m !== model)];
+  let lastStatus = 0;
+  let lastErrText = '';
+  let payload: {
     candidates?: Array<{
       content?: { parts?: Array<{ text?: string }> };
     }>;
-  };
+  } | null = null;
+
+  for (const candidateModel of candidates) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: 'image/jpeg',
+                  data: base64Jpeg,
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
+
+    if (res.ok) {
+      payload = (await res.json()) as typeof payload;
+      break;
+    }
+
+    lastStatus = res.status;
+    lastErrText = await res.text().catch(() => res.statusText);
+    // Retry next fallback model only on 404 (not found/deprecated) or 503 (temporary overload)
+    if (res.status !== 404 && res.status !== 503) {
+      throw new Error(`Gemini API HTTP ${res.status}: ${lastErrText.slice(0, 220)}`);
+    }
+  }
+
+  if (!payload) {
+    throw new Error(`Gemini API HTTP ${lastStatus}: ${lastErrText.slice(0, 220)}`);
+  }
   const rawContent = payload.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawContent) {
     throw new Error('Gemini API returned an empty response.');

@@ -45,7 +45,7 @@ function SettingsPage() {
   const [cloudUrl, setCloudUrl] = useState('');
   const [cloudTestStatus, setCloudTestStatus] = useState<string | null>(null);
   const [geminiKey, setGeminiKey] = useState('');
-  const [geminiModel, setGeminiModel] = useState('gemini-3.8-flash');
+  const [geminiModel, setGeminiModel] = useState('gemini-3-flash-preview');
   const [geminiTestStatus, setGeminiTestStatus] = useState<string | null>(null);
   const [language, setLanguage] = useState<'en' | 'kn'>('en');
   const [packVersion, setPackVersion] = useState<string | null>(null);
@@ -72,7 +72,7 @@ function SettingsPage() {
       db.forms.orderBy('createdAt').reverse().first(),
       getCorrectionCount(),
       getSetting<string>('gemini_api_key', ''),
-      getSetting<string>('gemini_model', (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'gemini-3.8-flash'),
+      getSetting<string>('gemini_model', (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'gemini-3-flash-preview'),
     ]).then(([eng, url, lang, ver, setup, maxSide, latestForm, corrCount, gKey, gModel]) => {
       setOcrEngine(eng);
       setCloudUrl(url);
@@ -374,7 +374,7 @@ function SettingsPage() {
                     setGeminiModel(v);
                     void setSetting('gemini_model', v.trim());
                   }}
-                  placeholder="gemini-3.8-flash"
+                  placeholder="gemini-3-flash-preview"
                   className="text-xs h-7"
                 />
               </div>

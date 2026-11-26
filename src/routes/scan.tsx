@@ -206,7 +206,7 @@ function ScanPage() {
     setTimings(null);
 
     try {
-      const engine = await getSetting<OcrEngine>('ocr_engine', 'paddle');
+      const engine = ocrEngine;
       setStatusMsg(
         engine === 'paddle'
           ? 'Loading offline PP-OCR detection + Kannada/English models…'
@@ -266,7 +266,7 @@ function ScanPage() {
       setOcrError(err instanceof Error ? err.message : 'OCR failed');
       setStep('crop');
     }
-  }, [initialize, recognize, recognizeFullPage, runPaddlePipeline, langMode]);
+  }, [initialize, recognize, recognizeFullPage, runPaddlePipeline, langMode, ocrEngine]);
 
   const handleCapture = useCallback((imageData: ImageData, dataUrl: string) => {
     if (captureMode === 'batch') {
