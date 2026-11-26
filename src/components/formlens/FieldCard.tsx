@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Check } from 'lucide-react';
+import { AlertTriangle, Check } from 'lucide-react';
 import { ConfidenceBadge, confidenceColor } from './ConfidenceBadge';
 import { validateField } from '@/lib/formlens/validators';
 import { validatePincode } from '@/lib/formlens/validators';
@@ -23,6 +23,7 @@ interface Props {
   onValueChange: (value: string) => void;
   onAccept: () => void;
   accepted: boolean;
+  warnings?: string[];
 }
 
 export function FieldCard({
@@ -36,6 +37,7 @@ export function FieldCard({
   onValueChange,
   onAccept,
   accepted,
+  warnings = [],
 }: Props) {
   const [localValue, setLocalValue] = useState(value);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -78,8 +80,18 @@ export function FieldCard({
     }
   };
 
+  const hasWarnings = warnings.length > 0;
+
   return (
-    <Card className={`border-2 transition-colors ${accepted ? 'border-green-300' : confidenceColor(confidence)}`}>
+    <Card
+      className={`border-2 transition-colors ${
+        hasWarnings
+          ? 'border-amber-400 bg-amber-50/40 dark:bg-amber-950/15'
+          : accepted
+            ? 'border-green-300'
+            : confidenceColor(confidence)
+      }`}
+    >
       <CardContent className="p-4 space-y-3">
         {/* Header: label + confidence */}
         <div className="flex items-start justify-between gap-2">
@@ -129,6 +141,18 @@ export function FieldCard({
         {/* Validation error */}
         {validationError && (
           <p className="text-xs text-red-600">{validationError}</p>
+        )}
+
+        {/* Name / edge-case warnings */}
+        {hasWarnings && (
+          <div className="rounded-md bg-amber-50 border border-amber-300 px-2.5 py-1.5 space-y-1">
+            {warnings.map((w, idx) => (
+              <div key={idx} className="flex items-start gap-1.5 text-xs text-amber-900">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                <span>{w}</span>
+              </div>
+            ))}
+          </div>
         )}
 
         {/* Suggestion */}

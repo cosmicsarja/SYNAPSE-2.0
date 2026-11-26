@@ -16,6 +16,7 @@ import type { SavedForm, FormField } from '@/db/schema';
 import type { FieldType } from '@/config/model';
 import { exportJson, exportCsv, exportPdf, exportAnnotatedPng } from '@/lib/formlens/exports';
 import { JsonToPdfDialog } from '@/components/formlens/JsonToPdfDialog';
+import { findFormNameEdgeCases } from '@/lib/formlens/nameValidation';
 import { dataUrlToPngBlob } from '@/lib/formlens/corrections';
 import { enqueueSyncForm } from '@/lib/formlens/syncQueue';
 import { ChevronLeft, Download, FileJson } from 'lucide-react';
@@ -227,9 +228,18 @@ function ReviewPage() {
     );
   }
 
-  // Split fields: low confidence first (using CONFIDENCE_THRESHOLDS.medium)
-  const needsReview = fields.filter((f) => f.confidence < CONFIDENCE_THRESHOLDS.medium && !accepted.has(f.id!));
-  const others = fields.filter((f) => f.confidence >= CONFIDENCE_THRESHOLDS.medium || accepted.has(f.id!));
+  // Split fields: low confidence or name edge-case warnings first
+  const nameWarnings = findFormNameEdgeCases(fields);
+  const needsReview = fields.filter(
+    (f) =>
+      (f.confidence < CONFIDENCE_THRESHOLDS.medium || nameWarnings.has(f.id!)) &&
+      !accepted.has(f.id!),
+  );
+  const others = fields.filter(
+    (f) =>
+      (f.confidence >= CONFIDENCE_THRESHOLDS.medium && !nameWarnings.has(f.id!)) ||
+      accepted.has(f.id!),
+  );
 
   const avgConf = fields.reduce((s, f) => s + f.confidence, 0) / (fields.length || 1);
   const pageImgSrc = form.imageDataUrl ?? form.thumbnailDataUrl;
@@ -245,8 +255,14 @@ function ReviewPage() {
         </Button>
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm truncate">{form.templateName}</div>
-          <div className="text-xs text-muted-foreground">
-            {fields.length} fields · <ConfidenceBadge confidence={avgConf} />
+          <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+            <span>{fields.length} fields ·</span>
+            <ConfidenceBadge confidence={avgConf} />
+            {nameWarnings.size > 0 && (
+              <span className="text-amber-600 font-medium">
+                · ⚠ {nameWarnings.size} name {nameWarnings.size === 1 ? 'warning' : 'warnings'}
+              </span>
+            )}
           </div>
         </div>
         {/* Editable JSON -> PDF */}
@@ -325,6 +341,7 @@ function ReviewPage() {
                     onValueChange={(v) => void handleValueChange(field.id!, v)}
                     onAccept={() => handleAccept(field.id!)}
                     accepted={accepted.has(field.id!)}
+                    warnings={field.id !== undefined ? nameWarnings.get(field.id) : undefined}
                   />
                 </div>
               ))}
@@ -360,6 +377,7 @@ function ReviewPage() {
                     onValueChange={(v) => void handleValueChange(field.id!, v)}
                     onAccept={() => handleAccept(field.id!)}
                     accepted={accepted.has(field.id!)}
+                    warnings={field.id !== undefined ? nameWarnings.get(field.id) : undefined}
                   />
                 </div>
               ))}
