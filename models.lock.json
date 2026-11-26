@@ -1,8 +1,18 @@
 {
   "repo": "byrizki/rusto-models",
   "licence": "MIT",
-  "updatedAt": "2026-11-25T14:45:42.344Z",
+  "updatedAt": "2026-11-26T04:01:24.587Z",
   "models": [
+    {
+      "key": "openocr_det",
+      "name": "openocr_det.v1.onnx",
+      "repoPath": "openocr_det_model.onnx",
+      "url": "https://huggingface.co/topdu/OpenOCR/resolve/main/openocr_det_model.onnx",
+      "size": 12420719,
+      "sha256": "51d2362ddefd987328e852b8196058d1cf11909a0d30bba8207eabf1f18f0881",
+      "version": "openocr-repvit-v1",
+      "purpose": "OpenOCR RepViT-DBNet high-recall text region detection (bounding boxes)"
+    },
     {
       "key": "det",
       "name": "ppocrv4_det.v1.onnx",

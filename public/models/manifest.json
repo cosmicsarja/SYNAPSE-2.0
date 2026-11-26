@@ -1,7 +1,15 @@
 {
   "version": "2.0.0",
-  "generatedAt": "2026-11-26T03:22:28.172Z",
+  "generatedAt": "2026-11-26T04:01:56.014Z",
   "files": [
+    {
+      "name": "openocr_det.v1.onnx",
+      "url": "/models/openocr_det.v1.onnx",
+      "size": 12420719,
+      "sha256": "51d2362ddefd987328e852b8196058d1cf11909a0d30bba8207eabf1f18f0881",
+      "version": "openocr-repvit-v1",
+      "description": "OpenOCR RepViT-DBNet high-recall text region detection (bounding boxes)"
+    },
     {
       "name": "ppocrv4_det.v1.onnx",
       "url": "/models/ppocrv4_det.v1.onnx",

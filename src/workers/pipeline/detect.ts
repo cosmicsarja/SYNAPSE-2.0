@@ -3,7 +3,11 @@
  * oriented bounding boxes, reading-order sort, and perspective-warped cropping.
  */
 import * as ort from 'onnxruntime-web/wasm';
-import { DET_MODEL_CONFIG, ORT_CONFIG } from '@/config/ocrModels';
+import {
+  DET_MODEL_CONFIG,
+  ORT_CONFIG,
+  PPOCR_DET_FALLBACK_CONFIG,
+} from '@/config/ocrModels';
 
 export type Point2D = [number, number];
 export type Quad = [Point2D, Point2D, Point2D, Point2D]; // TL, TR, BR, BL
@@ -37,26 +41,51 @@ export interface DetectResult {
 }
 
 let cachedDetSession: ort.InferenceSession | null = null;
+let cachedDetIo: { inputName: string; outputName: string } = {
+  inputName: DET_MODEL_CONFIG.inputName,
+  outputName: DET_MODEL_CONFIG.outputName,
+};
 let detLoadMs = 0;
 
-export async function getDetectorSession(): Promise<{ session: ort.InferenceSession; loadMs: number }> {
+export async function getDetectorSession(): Promise<{
+  session: ort.InferenceSession;
+  inputName: string;
+  outputName: string;
+  loadMs: number;
+}> {
   if (cachedDetSession) {
-    return { session: cachedDetSession, loadMs: detLoadMs };
+    return { session: cachedDetSession, ...cachedDetIo, loadMs: detLoadMs };
   }
   const t0 = performance.now();
   // Note: ort.env.wasm is configured once in ocr.worker.ts at module load time.
 
+  const candidates = [
+    {
+      modelPath: DET_MODEL_CONFIG.modelPath,
+      inputName: DET_MODEL_CONFIG.inputName,
+      outputName: DET_MODEL_CONFIG.outputName,
+    },
+    {
+      modelPath: PPOCR_DET_FALLBACK_CONFIG.modelPath,
+      inputName: PPOCR_DET_FALLBACK_CONFIG.inputName,
+      outputName: PPOCR_DET_FALLBACK_CONFIG.outputName,
+    },
+  ];
+
   let lastErr: unknown = null;
-  for (const provider of ORT_CONFIG.PROVIDERS) {
-    try {
-      cachedDetSession = await ort.InferenceSession.create(DET_MODEL_CONFIG.modelPath, {
-        executionProviders: [provider],
-      });
-      detLoadMs = Math.round(performance.now() - t0);
-      return { session: cachedDetSession, loadMs: detLoadMs };
-    } catch (err) {
-      lastErr = err;
-      console.warn(`[Detector] Provider ${provider} failed:`, err);
+  for (const cand of candidates) {
+    for (const provider of ORT_CONFIG.PROVIDERS) {
+      try {
+        cachedDetSession = await ort.InferenceSession.create(cand.modelPath, {
+          executionProviders: [provider],
+        });
+        cachedDetIo = { inputName: cand.inputName, outputName: cand.outputName };
+        detLoadMs = Math.round(performance.now() - t0);
+        return { session: cachedDetSession, ...cachedDetIo, loadMs: detLoadMs };
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[Detector:${cand.modelPath}] Provider ${provider} failed:`, err);
+      }
     }
   }
   throw new Error(
@@ -552,14 +581,14 @@ export async function detectTextBoxes(
   image: ImageData,
   maxSideLen: number = DET_MODEL_CONFIG.maxSideLen,
 ): Promise<DetectResult> {
-  const { session, loadMs } = await getDetectorSession();
+  const { session, inputName, outputName, loadMs } = await getDetectorSession();
   const t0 = performance.now();
 
   const { tensor, resizedW, resizedH } = preprocessForDetection(image, maxSideLen);
   let outTensor: ort.Tensor | undefined;
   try {
-    const outputs = await session.run({ [DET_MODEL_CONFIG.inputName]: tensor });
-    outTensor = outputs[DET_MODEL_CONFIG.outputName] ?? Object.values(outputs)[0];
+    const outputs = await session.run({ [inputName]: tensor });
+    outTensor = outputs[outputName] ?? Object.values(outputs)[0];
     if (!outTensor) {
       throw new Error('Detection model returned no output tensor.');
     }

@@ -38,3 +38,7 @@ dist-ssr
 
 # Downloaded ONNX binaries (fetched via npm run fetch-models / prebuild)
 public/models/*.onnx
+
+# Reference/cloned external research repos
+OpenOCR/
+bodhan_genai/

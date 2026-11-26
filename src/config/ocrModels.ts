@@ -23,10 +23,10 @@ export const ORT_CONFIG = {
 } as const;
 
 export const DET_MODEL_CONFIG = {
-  id: 'ppocrv4-mobile-det',
-  modelPath: '/models/ppocrv4_det.v1.onnx',
-  inputName: 'x',
-  outputName: 'sigmoid_0.tmp_0',
+  id: 'openocr-repvit-det',
+  modelPath: '/models/openocr_det.v1.onnx',
+  inputName: 'input',
+  outputName: 'output',
   /** Input layout: [N=1, C=3, H, W], H & W must be multiples of 32. */
   channels: 3,
   channelOrder: 'BGR' as const,
@@ -36,7 +36,7 @@ export const DET_MODEL_CONFIG = {
   /** ImageNet normalization applied after / 255.0 in BGR order: (x - mean) / std. */
   mean: [0.485, 0.456, 0.406] as const,
   std: [0.229, 0.224, 0.225] as const,
-  /** Output is [1, 1, H, W] after Sigmoid (already [0, 1] probability map). */
+  /** Output is [1, 1, H, W] probability map in [0, 1]. */
   outputIsProbability: true,
   /** DBNet post-processing defaults */
   thresh: 0.3,
@@ -44,6 +44,13 @@ export const DET_MODEL_CONFIG = {
   minBoxSize: 4,
   unclipRatio: 1.5,
   maxCandidates: 1000,
+} as const;
+
+export const PPOCR_DET_FALLBACK_CONFIG = {
+  id: 'ppocrv4-mobile-det',
+  modelPath: '/models/ppocrv4_det.v1.onnx',
+  inputName: 'x',
+  outputName: 'sigmoid_0.tmp_0',
 } as const;
 
 export interface RecModelSpec {

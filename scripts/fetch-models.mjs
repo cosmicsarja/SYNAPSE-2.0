@@ -23,6 +23,16 @@ const UPDATE_LOCK = process.argv.includes('--update-lock');
 
 const WANTED_SPECS = [
   {
+    key: 'openocr_det',
+    repoId: 'topdu/OpenOCR',
+    licence: 'Apache-2.0',
+    folder: '',
+    match: (p) => p === 'openocr_det_model.onnx',
+    localName: 'openocr_det.v1.onnx',
+    version: 'openocr-repvit-v1',
+    purpose: 'OpenOCR RepViT-DBNet high-recall text region detection (bounding boxes)',
+  },
+  {
     key: 'det',
     folder: 'ppocrv4-mobile',
     match: (p) => p === 'ppocrv4-mobile/det.onnx',
@@ -209,14 +219,25 @@ async function main() {
     licence = String(detectedLic).toUpperCase();
     console.log(`[fetch-models] Verified permissive licence: ${licence}`);
 
-    const folders = [...new Set(WANTED_SPECS.map((s) => s.folder))];
-    for (const folder of folders) {
-      const listing = await fetchJson(`${HF_API_BASE}/tree/main/${folder}`);
-      for (const spec of WANTED_SPECS.filter((s) => s.folder === folder)) {
-        const match = listing.find((item) => item.type === 'file' && spec.match(item.path));
-        if (match) {
-          discoveredByKey.set(spec.key, match);
-          console.log(`[fetch-models] Selected ${match.path} (${formatMB(match.size)}) -> ${spec.localName}`);
+    const byRepo = new Map();
+    for (const s of WANTED_SPECS) {
+      const r = s.repoId || REPO_ID;
+      if (!byRepo.has(r)) byRepo.set(r, new Set());
+      byRepo.get(r).add(s.folder);
+    }
+
+    for (const [repo, folders] of byRepo.entries()) {
+      for (const folder of folders) {
+        const treeUrl = folder
+          ? `https://huggingface.co/api/models/${repo}/tree/main/${folder}`
+          : `https://huggingface.co/api/models/${repo}/tree/main`;
+        const listing = await fetchJson(treeUrl);
+        for (const spec of WANTED_SPECS.filter((s) => (s.repoId || REPO_ID) === repo && s.folder === folder)) {
+          const match = listing.find((item) => item.type === 'file' && spec.match(item.path));
+          if (match) {
+            discoveredByKey.set(spec.key, match);
+            console.log(`[fetch-models] Selected ${repo}/${match.path} (${formatMB(match.size)}) -> ${spec.localName}`);
+          }
         }
       }
     }
@@ -252,7 +273,7 @@ paddle2onnx --model_dir ch_PP-OCRv4_det_infer --model_filename inference.pdmodel
       continue;
     }
 
-    const url = `${HF_RAW_BASE}/${item.path}`;
+    const url = `https://huggingface.co/${spec.repoId || REPO_ID}/resolve/main/${item.path}`;
     if (!UPDATE_LOCK && locked && existsSync(localPath)) {
       const actualHash = sha256File(localPath);
       if (actualHash !== locked.sha256) {
