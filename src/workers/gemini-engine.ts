@@ -65,6 +65,9 @@ async function imageDataToBase64Jpeg(imageData: ImageData): Promise<string> {
 }
 
 interface GeminiRawBlock {
+  label?: unknown;
+  key?: unknown;
+  value?: unknown;
   text?: unknown;
   script?: unknown;
   confidence?: unknown;
@@ -73,6 +76,7 @@ interface GeminiRawBlock {
 
 /**
  * Pure parser for Gemini Vision OCR JSON output.
+ * Supports structured { fields: [{ label, value, box_2d }] } and legacy { blocks: [{ text, box_2d }] }.
  * Converts Gemini's [ymin, xmin, ymax, xmax] (0..1000) into pixel bbox { x0, y0, x1, y1 }.
  */
 export function parseGeminiOcrResponse(
@@ -95,19 +99,36 @@ export function parseGeminiOcrResponse(
     );
   }
 
+  const obj = parsed as { fields?: unknown; blocks?: unknown };
   const rawBlocks: GeminiRawBlock[] = Array.isArray(parsed)
     ? (parsed as GeminiRawBlock[])
-    : Array.isArray((parsed as { blocks?: unknown })?.blocks)
-      ? ((parsed as { blocks: GeminiRawBlock[] }).blocks)
-      : [];
+    : Array.isArray(obj?.fields)
+      ? (obj.fields as GeminiRawBlock[])
+      : Array.isArray(obj?.blocks)
+        ? (obj.blocks as GeminiRawBlock[])
+        : [];
 
   const lines: OcrLine[] = [];
 
   for (let i = 0; i < rawBlocks.length; i++) {
     const b = rawBlocks[i];
-    if (!b || typeof b.text !== 'string') continue;
-    const text = normalizeKannadaText(b.text.trim());
+    if (!b) continue;
+    const rawValue =
+      typeof b.value === 'string'
+        ? b.value
+        : typeof b.text === 'string'
+          ? b.text
+          : '';
+    const text = normalizeKannadaText(rawValue.trim());
     if (!text) continue;
+
+    const rawLabel =
+      typeof b.label === 'string'
+        ? b.label.trim()
+        : typeof b.key === 'string'
+          ? b.key.trim()
+          : '';
+    const label = rawLabel ? normalizeKannadaText(rawLabel) : undefined;
 
     let x0 = 10;
     let y0 = Math.min(imgH - 30, 10 + i * 32);
@@ -126,7 +147,7 @@ export function parseGeminiOcrResponse(
 
     const rawConf = typeof b.confidence === 'number' && Number.isFinite(b.confidence)
       ? b.confidence
-      : 0.94;
+      : 0.95;
     const confidence = rawConf > 1 ? Math.min(1, rawConf / 100) : Math.max(0, Math.min(1, rawConf));
 
     const script = (
@@ -137,6 +158,7 @@ export function parseGeminiOcrResponse(
 
     lines.push({
       text,
+      ...(label ? { label } : {}),
       confidence,
       language: script,
       bbox: { x0, y0, x1, y1 },
@@ -144,7 +166,9 @@ export function parseGeminiOcrResponse(
   }
 
   return {
-    fullText: lines.map((l) => l.text).join('\n'),
+    fullText: lines
+      .map((l) => (l.label ? `${l.label} : ${l.text}` : l.text))
+      .join('\n'),
     lines,
   };
 }
@@ -172,14 +196,20 @@ export async function recognizeWithGemini(
         : 'Read both Kannada (ಕನ್ನಡ) and English/Latin text, including handwritten text, numbers, and dates.';
 
   const prompt = [
-    'You are an exact OCR engine for Indian documents and forms.',
+    'You are an exact OCR and structured form-extraction engine for Indian government/application forms.',
     langHint,
-    'Detect every visible text line or field block in reading order (top-to-bottom, left-to-right).',
-    'Preserve exact Kannada Unicode spelling (including vowel signs and ottaksharas), English words, and digits without translating.',
+    'Extract all filled form fields (and any standalone key-value pairs) as clean label + value pairs in reading order.',
+    'RULES:',
+    '1) IGNORE any crossed-out, struck-through, or scribbled-out handwriting — only extract the valid uncrossed value.',
+    '2) JOIN character-by-character grid boxes into complete words or numbers (e.g. [R][O][H][A][N] -> "ROHAN", [9][8][4][5][1][2][3][4][9][0] -> "9845123490", [ರೋ][ಹ][ನ್] -> "ರೋಹನ್").',
+    '3) Format dates cleanly (e.g. 15/08/2001).',
+    '4) For ticked checkboxes (✓), output the selected option as the value (e.g. label "Gender", value "Male"; label "Document for Proof of DOB", value "PAN Card").',
+    '5) Preserve exact Kannada Unicode spelling (including all vowel signs like ೋ, ಾ, ಿ, ು and ottaksharas like ರ್, ನ್, ಕ್) without translating.',
+    '6) Skip empty/unfilled boilerplate instructions and disclaimers.',
     'Return ONLY a JSON object with shape:',
-    '{"blocks":[{"text":"string","script":"kn|en|mixed|number","confidence":0.95,"box_2d":[ymin,xmin,ymax,xmax]}]}',
-    'where box_2d coordinates are integers normalized 0..1000.',
-  ].join(' ');
+    '{"fields":[{"label":"string","value":"string","script":"kn|en|mixed|number","confidence":0.96,"box_2d":[ymin,xmin,ymax,xmax]}]}',
+    'where box_2d is the bounding box of the filled value (integers 0..1000).',
+  ].join('\n');
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 

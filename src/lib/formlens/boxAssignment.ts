@@ -16,6 +16,7 @@ export interface TemplateFieldDef {
 export interface PositionedOcrBox {
   bbox: BBox;
   text: string;
+  label?: string;
   confidence: number;
   script: 'kn' | 'en' | 'mixed';
   model: string;

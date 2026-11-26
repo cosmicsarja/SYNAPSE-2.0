@@ -41,4 +41,40 @@ describe('Gemini Vision OCR response parser', () => {
 
     expect(() => parseGeminiOcrResponse('not json', 500, 500)).toThrow(/non-JSON/i);
   });
+
+  it('parses structured fields into label : value fullText and preserves labels', () => {
+    const raw = JSON.stringify({
+      fields: [
+        {
+          label: 'Name (Kannada)',
+          value: 'ರೋಹನ್ ಕುಮಾರ್',
+          script: 'kn',
+          confidence: 0.97,
+          box_2d: [250, 390, 285, 740],
+        },
+        {
+          label: 'Name (English)',
+          value: 'ROHAN KUMAR',
+          script: 'en',
+          confidence: 0.99,
+          box_2d: [365, 390, 400, 720],
+        },
+        {
+          label: 'Mobile No',
+          value: '9845123490',
+          script: 'number',
+          confidence: 0.99,
+          box_2d: [585, 480, 610, 800],
+        },
+      ],
+    });
+
+    const parsed = parseGeminiOcrResponse(raw, 1000, 1400);
+    expect(parsed.lines).toHaveLength(3);
+    expect(parsed.lines[0]!.label).toBe('Name (Kannada)');
+    expect(parsed.lines[0]!.text).toBe('ರೋಹನ್ ಕುಮಾರ್');
+    expect(parsed.fullText).toBe(
+      'Name (Kannada) : ರೋಹನ್ ಕುಮಾರ್\nName (English) : ROHAN KUMAR\nMobile No : 9845123490',
+    );
+  });
 });

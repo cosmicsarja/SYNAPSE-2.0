@@ -124,6 +124,7 @@ function ScanPage() {
             boxes = res.lines.map((l) => ({
               bbox: l.bbox,
               text: l.text,
+              ...(l.label ? { label: l.label } : {}),
               confidence: l.confidence,
               script: l.language === 'kn' ? 'kn' : l.language === 'mixed' ? 'mixed' : 'en',
               model: engine,
@@ -308,12 +309,14 @@ function ScanPage() {
       const boxes = (paddleBoxes ?? lines.map((l) => ({
         box: { bbox: l.bbox },
         text: l.text,
+        label: l.label,
         confidence: l.confidence,
         script: (l.language === 'kn' ? 'kn' : l.language === 'mixed' ? 'mixed' : 'en') as 'kn' | 'en' | 'mixed',
-        model: 'tesseract',
+        model: ocrEngine === 'gemini' ? 'gemini' : 'tesseract',
       }))).map((item) => ({
         bbox: item.box.bbox,
         text: item.text,
+        ...('label' in item && item.label ? { label: item.label } : {}),
         confidence: item.confidence,
         script: item.script,
         model: item.model,

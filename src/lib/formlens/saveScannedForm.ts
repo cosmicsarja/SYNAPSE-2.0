@@ -109,6 +109,38 @@ export async function saveScannedForm(input: SaveScannedFormInput): Promise<numb
         ? { cropDataUrl: positionedBoxes[a.boxIndices[0]]!.cropDataUrl! }
         : {}),
     }));
+  } else if (positionedBoxes.some((b) => Boolean(b.label))) {
+    // Structured key-value extraction (e.g., Gemini Vision form parser)
+    const imgW = Math.max(1, imageData.width);
+    const imgH = Math.max(1, imageData.height);
+    fields = positionedBoxes.map((b, idx) => {
+      const label = b.label?.trim() || `Field ${idx + 1}`;
+      const fieldId =
+        label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_|_$/g, '') || `field_${idx + 1}`;
+      return {
+        fieldId,
+        labelEn: label,
+        labelKn: label,
+        fieldType: inferFieldType(b.text),
+        textValue: b.text,
+        originalText: b.text,
+        confidence: b.confidence,
+        wasEdited: false,
+        normBbox: [b.bbox.x0 / imgW, b.bbox.y0 / imgH, b.bbox.x1 / imgW, b.bbox.y1 / imgH] as [
+          number,
+          number,
+          number,
+          number,
+        ],
+        ...(b.script ? { script: b.script } : {}),
+        ...(b.model ? { model: b.model } : {}),
+        category: 'paired' as const,
+        ...(b.cropDataUrl ? { cropDataUrl: b.cropDataUrl } : {}),
+      };
+    });
   } else {
     const knownLabels: Array<{ id: string; labelEn: string; labelKn: string }> = [];
     for (const tid of ['ration-card', 'income-certificate']) {

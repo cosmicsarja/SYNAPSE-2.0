@@ -10,6 +10,7 @@ export type BlockLanguage = 'kn' | 'en' | 'mixed' | 'number';
 
 export interface OcrLine {
   text: string;
+  label?: string;
   confidence: number; // 0–1
   language?: BlockLanguage;
   bbox: { x0: number; y0: number; x1: number; y1: number };

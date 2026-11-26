@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { FileJson, FileText, RotateCcw, Sparkles, Check, AlertCircle } from 'lucide-react';
+import { FileJson, FileText, RotateCcw, Sparkles, Check, AlertCircle, Copy } from 'lucide-react';
 import type { FormField, SavedForm } from '@/db/schema';
 import {
   downloadEditableJson,
@@ -43,6 +43,7 @@ export function JsonToPdfDialog({
 
   const [rawJson, setRawJson] = useState(initialJson);
   const [applied, setApplied] = useState(false);
+  const [copiedKv, setCopiedKv] = useState(false);
   const [pdfMode, setPdfMode] = useState<PdfRenderMode>('layout');
   const [generating, setGenerating] = useState(false);
 
@@ -83,6 +84,16 @@ export function JsonToPdfDialog({
 
   const handleDownloadJson = () => {
     downloadEditableJson(rawJson, `formlens-${form.id ?? 'form'}.json`);
+  };
+
+  const handleCopyKeyValue = async () => {
+    if (!parsed.ok) return;
+    const text = parsed.data.fields
+      .map((f) => `${f.label || f.key} : ${f.value}`)
+      .join('\n');
+    await navigator.clipboard.writeText(text);
+    setCopiedKv(true);
+    setTimeout(() => setCopiedKv(false), 2000);
   };
 
   const handleApplyToFields = async () => {
@@ -204,6 +215,16 @@ export function JsonToPdfDialog({
             >
               <FileJson className="h-4 w-4 mr-1.5" />
               Download .json
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!parsed.ok}
+              onClick={() => void handleCopyKeyValue()}
+            >
+              <Copy className="h-4 w-4 mr-1.5" />
+              {copiedKv ? 'Copied ✓' : 'Copy Key : Value'}
             </Button>
             {onApplyJsonValues && (
               <Button
