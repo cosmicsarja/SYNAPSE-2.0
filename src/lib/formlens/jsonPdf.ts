@@ -304,7 +304,7 @@ async function renderPdfCanvases(
     return { pages: [canvas], pageWmm, pageHmm };
   }
 
-  const applicantOnly = options?.applicantOnly ?? true;
+  const applicantOnly = options?.applicantOnly ?? false;
   const tableFields = applicantOnly ? filterApplicantFields(data.fields) : data.fields;
 
   const PAGE_W = 1240;

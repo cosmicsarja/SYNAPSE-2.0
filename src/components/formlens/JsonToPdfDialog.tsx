@@ -65,7 +65,7 @@ export function JsonToPdfDialog({
   const [applied, setApplied] = useState(false);
   const [copiedKv, setCopiedKv] = useState(false);
   const [pdfMode, setPdfMode] = useState<PdfRenderMode>('layout');
-  const [applicantOnly, setApplicantOnly] = useState(true);
+  const [applicantOnly, setApplicantOnly] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
