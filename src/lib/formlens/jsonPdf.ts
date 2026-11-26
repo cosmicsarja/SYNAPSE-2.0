@@ -11,6 +11,32 @@ import type { FormField, SavedForm } from '@/db/schema';
 
 export type PdfRenderMode = 'layout' | 'overlay' | 'table';
 
+const BOILERPLATE_RE =
+  /\b(space\s+for\s+pasting|to\s+be\s+filled\s+by\s+office|disclaimer|see\s+rules|self\s+attested|election\s+commission|electoral\s+registration\s+officer|application\s+form\s+for|unless\s+union\s+territories|passport\s+size\s+color\s+photograph)\b/i;
+
+const ESSENTIAL_APPLICANT_RE =
+  /(name|surname|father|mother|husband|wife|guardian|relative|gender|sex|dob|birth|age|mobile|phone|email|aadhaar|aadhar|pan|passport|ration|epic|voter|id|address|house|street|road|locality|town|village|post\s*office|tehsil|taluk|taluka|mandal|district|state|pin|constituency|assembly|income|caste|religion|occupation|bank|account|ಹೆಸರು|ವಿಳಾಸ|ಜನ್ಮ|ದಿನಾಂಕ|ವಯಸ್ಸು|ಲಿಂಗ|ಮೊಬೈಲ್|ದೂರವಾಣಿ|ಆಧಾರ್|ಜಿಲ್ಲೆ|ತಾಲೂಕು|ಗ್ರಾಮ|ರಾಜ್ಯ|ಪಿನ್|ಆದಾಯ|ಜಾತಿ|ಪಡಿತರ)/i;
+
+/**
+ * Filters fields down to essential applicant details (removing empty/Not found
+ * entries and printed form boilerplate/instructions).
+ */
+export function filterApplicantFields(fields: EditableJsonField[]): EditableJsonField[] {
+  const nonEmpty = fields.filter((f) => {
+    const v = (f.value ?? '').trim();
+    if (!v || v === 'Not found' || v === '—') return false;
+    const combined = `${f.key} ${f.label} ${v}`;
+    if (BOILERPLATE_RE.test(combined)) return false;
+    return true;
+  });
+
+  const essential = nonEmpty.filter((f) =>
+    ESSENTIAL_APPLICANT_RE.test(`${f.key} ${f.label}`),
+  );
+
+  return essential.length > 0 ? essential : nonEmpty;
+}
+
 export interface EditableJsonField {
   key: string;
   label: string;
@@ -265,7 +291,7 @@ async function renderLayoutCanvas(
 
 async function renderPdfCanvases(
   data: EditableFormJson,
-  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string },
+  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string; applicantOnly?: boolean },
 ): Promise<{ pages: HTMLCanvasElement[]; pageWmm: number; pageHmm: number }> {
   const hasBoxes = data.fields.some((f) => Boolean(f.normBbox));
   const mode: PdfRenderMode = options?.mode ?? (hasBoxes ? 'layout' : 'table');
@@ -278,12 +304,15 @@ async function renderPdfCanvases(
     return { pages: [canvas], pageWmm, pageHmm };
   }
 
+  const applicantOnly = options?.applicantOnly ?? true;
+  const tableFields = applicantOnly ? filterApplicantFields(data.fields) : data.fields;
+
   const PAGE_W = 1240;
   const PAGE_H = 1754;
   const MARGIN = 80;
   const CONTENT_W = PAGE_W - MARGIN * 2;
-  const COL_LABEL_W = 360;
-  const COL_VAL_W = CONTENT_W - COL_LABEL_W - 110;
+  const COL_LABEL_W = 380;
+  const COL_VAL_W = applicantOnly ? CONTENT_W - COL_LABEL_W : CONTENT_W - COL_LABEL_W - 110;
   const COL_CONF_X = MARGIN + COL_LABEL_W + COL_VAL_W + 20;
 
   const pages: HTMLCanvasElement[] = [];
@@ -332,8 +361,14 @@ async function renderPdfCanvases(
     ctx.fillStyle = '#0f172a';
     ctx.font = `700 22px ${FONT_FAMILY}`;
     ctx.fillText('Field / ಕ್ಷೇತ್ರ', MARGIN + 16, y + 32);
-    ctx.fillText('Extracted Value / ಮೌಲ್ಯ', MARGIN + COL_LABEL_W + 16, y + 32);
-    ctx.fillText('Conf', COL_CONF_X, y + 32);
+    ctx.fillText(
+      applicantOnly ? 'Applicant Detail / ಅರ್ಜಿದಾರರ ವಿವರ' : 'Extracted Value / ಮೌಲ್ಯ',
+      MARGIN + COL_LABEL_W + 16,
+      y + 32,
+    );
+    if (!applicantOnly) {
+      ctx.fillText('Conf', COL_CONF_X, y + 32);
+    }
     return y + 48;
   };
 
@@ -344,7 +379,7 @@ async function renderPdfCanvases(
   const LINE_H = 32;
   const PAD_Y = 16;
 
-  for (const field of data.fields) {
+  for (const field of tableFields) {
     ctx.font = `600 22px ${FONT_FAMILY}`;
     const labelLines = wrapCanvasText(ctx, field.label || field.key, COL_LABEL_W - 28);
     ctx.font = `400 22px ${FONT_FAMILY}`;
@@ -377,7 +412,7 @@ async function renderPdfCanvases(
       ctx.fillText(line, MARGIN + COL_LABEL_W + 16, y + PAD_Y + 24 + i * LINE_H);
     });
 
-    if (field.confidence !== undefined) {
+    if (!applicantOnly && field.confidence !== undefined) {
       ctx.fillStyle = field.confidence >= 85 ? '#15803d' : field.confidence >= 60 ? '#b45309' : '#b91c1c';
       ctx.font = `600 20px ${FONT_FAMILY}`;
       ctx.fillText(`${Math.round(field.confidence)}%`, COL_CONF_X, y + PAD_Y + 24);
@@ -417,7 +452,7 @@ async function renderPdfCanvases(
  */
 export async function renderPdfPreviewDataUrls(
   data: EditableFormJson,
-  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string },
+  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string; applicantOnly?: boolean },
 ): Promise<string[]> {
   const { pages } = await renderPdfCanvases(data, options);
   return pages.map((pg) => pg.toDataURL('image/jpeg', 0.88));
@@ -430,7 +465,7 @@ export async function renderPdfPreviewDataUrls(
 export async function exportJsonToPdf(
   data: EditableFormJson,
   filename = 'formlens-document.pdf',
-  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string },
+  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string; applicantOnly?: boolean },
 ): Promise<void> {
   const { pages, pageWmm, pageHmm } = await renderPdfCanvases(data, options);
   const doc = new jsPDF({

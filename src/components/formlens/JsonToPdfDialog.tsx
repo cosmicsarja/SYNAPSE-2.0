@@ -65,6 +65,7 @@ export function JsonToPdfDialog({
   const [applied, setApplied] = useState(false);
   const [copiedKv, setCopiedKv] = useState(false);
   const [pdfMode, setPdfMode] = useState<PdfRenderMode>('layout');
+  const [applicantOnly, setApplicantOnly] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -90,6 +91,7 @@ export function JsonToPdfDialog({
     void renderPdfPreviewDataUrls(parsed.data, {
       mode: hasBoxes ? pdfMode : 'table',
       backgroundImageUrl: form.imageDataUrl ?? form.thumbnailDataUrl,
+      applicantOnly,
     })
       .then((urls) => {
         if (!cancelled) setPreviewUrls(urls);
@@ -103,7 +105,7 @@ export function JsonToPdfDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, tab, parsed, pdfMode, hasBoxes, form.imageDataUrl, form.thumbnailDataUrl]);
+  }, [open, tab, parsed, pdfMode, applicantOnly, hasBoxes, form.imageDataUrl, form.thumbnailDataUrl]);
 
   const updateData = (updater: (prev: EditableFormJson) => EditableFormJson) => {
     if (!parsed.ok) return;
@@ -128,6 +130,7 @@ export function JsonToPdfDialog({
       await exportJsonToPdf(parsed.data, `formlens-${form.id ?? 'form'}.pdf`, {
         mode: hasBoxes ? pdfMode : 'table',
         backgroundImageUrl: form.imageDataUrl ?? form.thumbnailDataUrl,
+        applicantOnly,
       });
     } finally {
       setGenerating(false);
@@ -238,6 +241,17 @@ export function JsonToPdfDialog({
             >
               Table
             </Button>
+            {(pdfMode === 'table' || !hasBoxes) && (
+              <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground ml-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={applicantOnly}
+                  onChange={(e) => setApplicantOnly(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Applicant only
+              </label>
+            )}
           </div>
         </div>
 

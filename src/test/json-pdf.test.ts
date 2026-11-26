@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formToEditableJson, parseEditableJson } from '@/lib/formlens/jsonPdf';
+import { filterApplicantFields, formToEditableJson, parseEditableJson } from '@/lib/formlens/jsonPdf';
 import type { FormField, SavedForm } from '@/db/schema';
 
 describe('Editable JSON <-> PDF conversion helpers', () => {
@@ -94,5 +94,27 @@ describe('Editable JSON <-> PDF conversion helpers', () => {
 
     const arrRoot = parseEditableJson('[1, 2, 3]');
     expect(arrRoot.ok).toBe(false);
+  });
+
+  it('filters Table PDF fields down to essential applicant details only', () => {
+    const filtered = filterApplicantFields([
+      { key: 'header', label: 'Application Form for New Voters', value: 'Form-6' },
+      { key: 'photo_box', label: 'Space for pasting photograph', value: '4.5 x 3.5 cm' },
+      { key: 'name_kn', label: 'Name (Kannada)', value: 'ರೋಹನ್ ಕುಮಾರ್' },
+      { key: 'name_en', label: 'Name (English)', value: 'ROHAN KUMAR' },
+      { key: 'mobile', label: 'Mobile No', value: '9845123490' },
+      { key: 'dob', label: 'Date of Birth', value: '15/08/2001' },
+      { key: 'district', label: 'District', value: 'Bengaluru Urban' },
+      { key: 'empty', label: 'Middle Name', value: 'Not found' },
+      { key: 'disclaimer', label: 'Disclaimer', value: 'If name not filled in English...' },
+    ]);
+
+    expect(filtered.map((f) => f.key)).toEqual([
+      'name_kn',
+      'name_en',
+      'mobile',
+      'dob',
+      'district',
+    ]);
   });
 });
