@@ -286,8 +286,11 @@ function ReviewPage() {
             <DropdownMenuItem onClick={() => exportCsv(form, fields)}>
               Export CSV
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setJsonDialogOpen(true)}>
+              Edit &amp; Preview PDF
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => exportPdf(form, fields)}>
-              Export PDF
+              Export PDF (Quick)
             </DropdownMenuItem>
             {pageImgSrc && (
               <DropdownMenuItem onClick={() => void exportAnnotatedPng(form, fields)}>

@@ -192,11 +192,10 @@ function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: n
  * Renders EditableFormJson in the exact spatial layout of the scanned image
  * (either on a clean white page or overlaid on the original photo with whiteout boxes).
  */
-async function renderLayoutPdf(
+async function renderLayoutCanvas(
   data: EditableFormJson,
-  filename: string,
   backgroundImageUrl?: string,
-): Promise<void> {
+): Promise<{ canvas: HTMLCanvasElement; pageWmm: number; pageHmm: number }> {
   const aspect =
     data.imageWidth && data.imageHeight && data.imageHeight > 0
       ? data.imageWidth / data.imageHeight
@@ -261,35 +260,22 @@ async function renderLayoutPdf(
 
   const pageWmm = 210;
   const pageHmm = Math.round((pageWmm / PAGE_W) * PAGE_H * 10) / 10;
-  const doc = new jsPDF({
-    orientation: PAGE_W > PAGE_H ? 'landscape' : 'portrait',
-    unit: 'mm',
-    format: [pageWmm, pageHmm],
-  });
-  const imgData = canvas.toDataURL('image/jpeg', 0.94);
-  doc.addImage(imgData, 'JPEG', 0, 0, pageWmm, pageHmm);
-  doc.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
+  return { canvas, pageWmm, pageHmm };
 }
 
-/**
- * Renders EditableFormJson onto A4-proportioned HTML Canvas pages (1240x1754, ~150 DPI)
- * and saves a multi-page PDF. Defaults to layout-matching mode if normBbox coordinates exist.
- */
-export async function exportJsonToPdf(
+async function renderPdfCanvases(
   data: EditableFormJson,
-  filename = 'formlens-document.pdf',
   options?: { mode?: PdfRenderMode; backgroundImageUrl?: string },
-): Promise<void> {
+): Promise<{ pages: HTMLCanvasElement[]; pageWmm: number; pageHmm: number }> {
   const hasBoxes = data.fields.some((f) => Boolean(f.normBbox));
   const mode: PdfRenderMode = options?.mode ?? (hasBoxes ? 'layout' : 'table');
 
   if ((mode === 'layout' || mode === 'overlay') && hasBoxes) {
-    await renderLayoutPdf(
+    const { canvas, pageWmm, pageHmm } = await renderLayoutCanvas(
       data,
-      filename,
       mode === 'overlay' ? options?.backgroundImageUrl : undefined,
     );
-    return;
+    return { pages: [canvas], pageWmm, pageHmm };
   }
 
   const PAGE_W = 1240;
@@ -423,11 +409,39 @@ export async function exportJsonToPdf(
     });
   }
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  return { pages, pageWmm: 210, pageHmm: 297 };
+}
+
+/**
+ * Renders JPEG data URLs for each page so users can preview the exact PDF before exporting.
+ */
+export async function renderPdfPreviewDataUrls(
+  data: EditableFormJson,
+  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string },
+): Promise<string[]> {
+  const { pages } = await renderPdfCanvases(data, options);
+  return pages.map((pg) => pg.toDataURL('image/jpeg', 0.88));
+}
+
+/**
+ * Renders EditableFormJson onto A4/layout-matched HTML Canvas pages
+ * and saves a multi-page PDF. Defaults to layout-matching mode if normBbox coordinates exist.
+ */
+export async function exportJsonToPdf(
+  data: EditableFormJson,
+  filename = 'formlens-document.pdf',
+  options?: { mode?: PdfRenderMode; backgroundImageUrl?: string },
+): Promise<void> {
+  const { pages, pageWmm, pageHmm } = await renderPdfCanvases(data, options);
+  const doc = new jsPDF({
+    orientation: pageWmm > pageHmm ? 'landscape' : 'portrait',
+    unit: 'mm',
+    format: [pageWmm, pageHmm],
+  });
   pages.forEach((pg, idx) => {
-    if (idx > 0) doc.addPage();
-    const imgData = pg.toDataURL('image/jpeg', 0.92);
-    doc.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+    if (idx > 0) doc.addPage([pageWmm, pageHmm]);
+    const imgData = pg.toDataURL('image/jpeg', 0.94);
+    doc.addImage(imgData, 'JPEG', 0, 0, pageWmm, pageHmm);
   });
 
   doc.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
