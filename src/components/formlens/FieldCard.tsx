@@ -10,6 +10,7 @@ import { ConfidenceBadge, confidenceColor } from './ConfidenceBadge';
 import { validateField } from '@/lib/formlens/validators';
 import { validatePincode } from '@/lib/formlens/validators';
 import { snapLocality } from '@/lib/formlens/fuzzySnap';
+import { sharedBilingualSlm, type WordPrediction } from '@/lib/formlens/bilingualSlm';
 import type { FieldType } from '@/config/model';
 
 interface Props {
@@ -42,6 +43,11 @@ export function FieldCard({
   const [localValue, setLocalValue] = useState(value);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [wordPredictions, setWordPredictions] = useState<WordPrediction[]>([]);
+
+  useEffect(() => {
+    void sharedBilingualSlm.warm();
+  }, []);
 
   useEffect(() => {
     setLocalValue(value);
@@ -66,7 +72,21 @@ export function FieldCard({
     } else {
       setSuggestion(null);
     }
+
+    if (fieldType !== 'checkbox' && fieldType !== 'number' && fieldType !== 'phone' && fieldType !== 'date') {
+      setWordPredictions(sharedBilingualSlm.predictWords(localValue, 3));
+    } else {
+      setWordPredictions([]);
+    }
   }, [localValue, fieldType, fieldId]);
+
+  const handleApplyPrediction = (predictedWord: string) => {
+    const trimmed = localValue.trimEnd();
+    const lastSpace = trimmed.lastIndexOf(' ');
+    const next = lastSpace >= 0 ? `${trimmed.slice(0, lastSpace + 1)}${predictedWord}` : predictedWord;
+    sharedBilingualSlm.addWord(predictedWord, 2);
+    handleChange(next);
+  };
 
   const handleChange = (v: string) => {
     setLocalValue(v);
@@ -151,6 +171,23 @@ export function FieldCard({
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
                 <span>{w}</span>
               </div>
+            ))}
+          </div>
+        )}
+
+        {/* Bilingual SLM word predictions */}
+        {wordPredictions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground">Predict:</span>
+            {wordPredictions.map((p) => (
+              <button
+                key={p.word}
+                type="button"
+                onClick={() => handleApplyPrediction(p.word)}
+                className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
+              >
+                {p.word}
+              </button>
             ))}
           </div>
         )}
